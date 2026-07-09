@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+env/
+.env/
+conda/
+miniconda*/
+miniforge*/
+.miniforge/
+
+# Temporary diagnostics
+tmp/
+
+# External dependencies
+third_party/robopianist/
+third_party/Miniforge3-Linux-*.sh
+!third_party/
+!third_party/robopianist_commit.txt
+
+# Generated data and assets
+data/**
+!data/
+!data/.gitkeep
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.sf2
+*.mid
+*.midi
+*.proto
+
+# Experiments, logs, checkpoints
+experiments/**
+!experiments/
+!experiments/.gitkeep
+*.ckpt
+*.pt
+*.pth
+*.onnx
+wandb/
+runs/
+logs/
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

@@ -46,6 +46,9 @@ class OneHandRoboPianistEnv:
             maximum=np.asarray(self._native_action_spec.maximum[:-1]),
             name="ala_one_hand_action",
         )
+        self._action_names = tuple(
+            str(actuator.name) for actuator in self.task._hand.actuators
+        )
         self._last_timestep = None
 
     def reset(self):
@@ -67,6 +70,12 @@ class OneHandRoboPianistEnv:
 
     def action_spec(self):
         return self._action_spec
+
+    def action_names(self) -> tuple[str, ...]:
+        return self._action_names
+
+    def action_index(self, name: str) -> int:
+        return self._action_names.index(name)
 
     def current_target_keys(self) -> list[int]:
         timestep = self._require_timestep()

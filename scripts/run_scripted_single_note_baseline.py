@@ -43,15 +43,38 @@ def main() -> None:
 
     print("rollout:")
     for log in logs:
+        selected = (
+            "None"
+            if log.selected_key is None
+            else f"{log.selected_key} {log.selected_note}"
+        )
+        distance = (
+            "None"
+            if log.nearest_fingertip_distance is None
+            else f"{log.nearest_fingertip_distance:.6f}"
+        )
+        target_state = (
+            "None" if log.target_key_state is None else f"{log.target_key_state:.6f}"
+        )
         print(
             f"  step={log.step:02d} target={list(log.target_keys)} "
-            f"selected={log.selected_key} finger={log.selected_finger} "
+            f"selected={selected} finger={log.selected_finger} "
+            f"active={list(log.active_action_names)} "
+            f"target_key_state={target_state} "
+            f"max_unintended_key_state={log.max_unintended_key_state:.6f} "
+            f"nearest_fingertip={log.nearest_fingertip} "
+            f"nearest_target_distance_m={distance} "
+            f"target_contact={log.target_contact} "
+            f"any_key_contact={log.any_key_contact} "
+            f"wrong_key_distance_m={log.wrong_key_nearest_distance} "
             f"pressed={list(log.pressed_keys)} reward={log.reward} "
-            f"discount={log.discount} last={log.last} status={log.status} "
-            f"active={list(log.active_action_names)}"
+            f"discount={log.discount} last={log.last} "
+            f"category={log.diagnostic_category}"
         )
+        if log.contact_pairs:
+            print(f"    contact_pairs={list(log.contact_pairs[:4])}")
 
-    counts = Counter(log.status for log in logs)
+    counts = Counter(log.diagnostic_category for log in logs)
     print("summary:")
     for status, count in sorted(counts.items()):
         print(f"  {status}: {count}")

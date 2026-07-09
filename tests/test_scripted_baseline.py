@@ -47,4 +47,34 @@ def test_scripted_diagnostic_rollout_logs_generated_midi(tmp_path):
     assert any(log.target_keys == (69 - 21,) for log in logs)
     assert any(log.target_keys == (73 - 21,) for log in logs)
     assert all(log.status for log in logs)
+    target_logs = [log for log in logs if log.selected_key is not None]
+    assert target_logs
+    assert all(log.selected_note for log in target_logs)
+    assert all(log.target_key_state is not None for log in target_logs)
+    assert all(log.max_unintended_key_state >= 0.0 for log in logs)
+    assert any(log.nearest_fingertip_distance is not None for log in target_logs)
+    assert all(isinstance(log.target_contact, bool) for log in logs)
+    assert all(isinstance(log.any_key_contact, bool) for log in logs)
+    assert all(log.diagnostic_category for log in logs)
     assert env.task.piano.sustain_state[0] == 0.0
+
+
+def test_env_read_only_diagnostic_helpers(tmp_path):
+    midi_path = tmp_path / "diagnostics.mid"
+    write_monophonic_midi([NoteEvent(73, 0.0, 0.2, 80)], midi_path)
+    env = ALAOneHandEnv(midi_path)
+    env.reset()
+
+    target_key = 73 - 21
+    key_states = env.piano_key_states()
+    nearest = env.nearest_fingertip_to_key(target_key)
+
+    assert key_states.shape == (88,)
+    assert env.target_key_state(target_key) is not None
+    assert env.max_unintended_key_state(target_key) >= 0.0
+    assert nearest is not None
+    assert nearest["fingertip"]
+    assert nearest["distance"] >= 0.0
+    assert env.key_press_region_position(target_key).shape == (3,)
+    assert isinstance(env.contact_pairs(), list)
+    assert env.note_name_for_key(target_key)

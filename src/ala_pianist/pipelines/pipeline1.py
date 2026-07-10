@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -23,6 +24,14 @@ class NoteRolloutMetric:
     max_unintended_key_state: float
     pressed_keys: tuple[int, ...]
     outcome: str
+    clean_press: bool
+    dirty_press: bool
+    missed: bool
+    closest_finger_to_target: str
+    finger_target_distance: float | None
+    target_contact_finger: str
+    contact_pairs: tuple[str, ...]
+    fingering_note: str
 
 
 @dataclass(frozen=True)
@@ -33,6 +42,10 @@ class Pipeline1Result:
     note_metrics: tuple[NoteRolloutMetric, ...]
     target_recall: float
     wrong_key_rate: float
+    max_unintended_key_state: float
+    clean_hit_count: int
+    dirty_hit_count: int
+    miss_count: int
 
 
 def default_pipeline1_events() -> list[NoteEvent]:
@@ -52,6 +65,7 @@ def run_pipeline1(
     summary_path: str | Path | None = None,
     note_events: list[NoteEvent] | None = None,
     build_library: bool = True,
+    controller: Any | None = None,
 ) -> Pipeline1Result:
     """Run the first rough Pipeline 1 diagnostic end to end."""
 
@@ -75,10 +89,13 @@ def run_pipeline1(
     metrics = []
     for event in transcribed_events:
         entry = library[event.pitch]
-        metrics.append(_rollout_note(env, entry, horizon_steps=24))
+        metrics.append(_rollout_note(env, entry, horizon_steps=24, controller=controller))
 
     hit_count = sum(metric.max_target_key_state >= 0.25 or metric.key_index in metric.pressed_keys for metric in metrics)
     wrong_count = sum(bool([key for key in metric.pressed_keys if key != metric.key_index]) for metric in metrics)
+    clean_count = sum(metric.clean_press for metric in metrics)
+    dirty_count = sum(metric.dirty_press for metric in metrics)
+    miss_count = sum(metric.missed for metric in metrics)
     result = Pipeline1Result(
         expected_pitches=tuple(event.pitch for event in expected_events),
         transcribed_pitches=tuple(event.pitch for event in transcription.note_events),
@@ -86,6 +103,10 @@ def run_pipeline1(
         note_metrics=tuple(metrics),
         target_recall=hit_count / max(1, len(metrics)),
         wrong_key_rate=wrong_count / max(1, len(metrics)),
+        max_unintended_key_state=max((metric.max_unintended_key_state for metric in metrics), default=0.0),
+        clean_hit_count=clean_count,
+        dirty_hit_count=dirty_count,
+        miss_count=miss_count,
     )
     if summary_path is not None:
         path = Path(summary_path)
@@ -94,20 +115,51 @@ def run_pipeline1(
     return result
 
 
-def _rollout_note(env: ALAOneHandEnv, entry: ActionLibraryEntry, *, horizon_steps: int) -> NoteRolloutMetric:
-    action = np.asarray(entry.action, dtype=env.action_spec().dtype)
+def _rollout_note(
+    env: ALAOneHandEnv,
+    entry: ActionLibraryEntry,
+    *,
+    horizon_steps: int,
+    controller: Any | None = None,
+) -> NoteRolloutMetric:
+    library_action = np.asarray(entry.action, dtype=env.action_spec().dtype)
     max_target = 0.0
     max_unintended = 0.0
     pressed = set()
+    contact_pairs = set()
+    closest_finger = "unknown"
+    closest_distance = None
+    target_contact_finger = "unknown"
     for step in range(horizon_steps):
-        ramp = min(1.0, (step + 1) / 6.0)
-        timestep = env.step(action * ramp)
+        if controller is None:
+            ramp = min(1.0, (step + 1) / 6.0)
+            action = library_action * ramp
+        else:
+            action = controller.action(
+                env,
+                target_midi=entry.midi_pitch,
+                fallback_action=library_action,
+                step_count=step,
+            )
+        timestep = env.step(action)
         max_target = max(max_target, env.target_key_state(entry.key_index) or 0.0)
         max_unintended = max(max_unintended, env.max_unintended_key_state(entry.key_index))
         pressed.update(env.current_pressed_keys())
+        closest = env.nearest_fingertip_to_key(entry.key_index)
+        if closest is not None:
+            closest_finger = str(closest["fingertip"])
+            distance = float(closest["distance"])
+            closest_distance = distance if closest_distance is None else min(closest_distance, distance)
+        for pair in env.key_contact_pairs(entry.key_index):
+            formatted = f"{pair[0]} <-> {pair[1]}"
+            contact_pairs.add(formatted)
+            target_contact_finger = _finger_from_contact_pair(pair)
         if timestep.last():
             break
     outcome = _outcome(entry.key_index, pressed, max_target, max_unintended)
+    clean = pressed == {entry.key_index}
+    dirty = entry.key_index in pressed and not clean
+    missed = not clean and not dirty and not (max_target >= 0.25 and max_unintended <= max_target + 0.02)
     return NoteRolloutMetric(
         midi_pitch=entry.midi_pitch,
         key_index=entry.key_index,
@@ -115,6 +167,14 @@ def _rollout_note(env: ALAOneHandEnv, entry: ActionLibraryEntry, *, horizon_step
         max_unintended_key_state=float(max_unintended),
         pressed_keys=tuple(sorted(pressed)),
         outcome=outcome,
+        clean_press=clean,
+        dirty_press=dirty,
+        missed=missed,
+        closest_finger_to_target=closest_finger,
+        finger_target_distance=closest_distance,
+        target_contact_finger=target_contact_finger,
+        contact_pairs=tuple(sorted(contact_pairs)),
+        fingering_note=_fingering_note(target_contact_finger, closest_finger, closest_distance),
     )
 
 
@@ -128,3 +188,25 @@ def _outcome(target_key: int, pressed: set[int], max_target: float, max_unintend
     if max_target > 0.02:
         return "partial"
     return "missed"
+
+
+def _finger_from_contact_pair(pair: tuple[str, str]) -> str:
+    text = " ".join(pair)
+    for token, name in (
+        ("th", "thumb"),
+        ("ff", "index"),
+        ("mf", "middle"),
+        ("rf", "ring"),
+        ("lf", "little"),
+    ):
+        if token in text:
+            return name
+    return "unknown"
+
+
+def _fingering_note(contact_finger: str, closest_finger: str, distance: float | None) -> str:
+    if contact_finger != "unknown":
+        return f"target contact observed with {contact_finger}; diagnostic only"
+    if closest_finger != "unknown":
+        return f"no reliable target contact finger; closest site={closest_finger} distance={distance}"
+    return "fingering unknown; contact data unavailable or inconclusive"

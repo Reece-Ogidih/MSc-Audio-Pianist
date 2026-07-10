@@ -257,7 +257,7 @@ def evaluate_residual_action(
     }
 
 
-def _hand_joint_summary(env: ALAOneHandEnv) -> tuple[float, float]:
+def hand_joint_summary(env: ALAOneHandEnv) -> tuple[float, float]:
     physics = env.env.physics
     joints = env.task._hand.joints
     qpos = np.asarray(physics.bind(joints).qpos, dtype=float)
@@ -265,3 +265,6 @@ def _hand_joint_summary(env: ALAOneHandEnv) -> tuple[float, float]:
     denom = np.maximum(1e-6, ranges[:, 1] - ranges[:, 0])
     normalized = np.clip((qpos - ranges[:, 0]) / denom, 0.0, 1.0)
     return float(np.mean(normalized)), float(np.std(normalized))
+
+
+_hand_joint_summary = hand_joint_summary

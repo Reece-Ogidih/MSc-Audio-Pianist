@@ -38,9 +38,11 @@ class SingleNotePianoGymEnv(gym.Env):
 
         self._env = ALAOneHandEnv(self.midi_path)
         spec = self._env.action_spec()
+        self._native_action_low = np.asarray(spec.minimum, dtype=np.float32)
+        self._native_action_high = np.asarray(spec.maximum, dtype=np.float32)
         self.action_space = spaces.Box(
-            low=np.asarray(spec.minimum, dtype=np.float32),
-            high=np.asarray(spec.maximum, dtype=np.float32),
+            low=-np.ones(spec.shape, dtype=np.float32),
+            high=np.ones(spec.shape, dtype=np.float32),
             dtype=np.float32,
         )
         self.observation_space = spaces.Box(
@@ -68,7 +70,8 @@ class SingleNotePianoGymEnv(gym.Env):
     def step(self, action):
         action = np.asarray(action, dtype=self.action_space.dtype)
         action = np.clip(action, self.action_space.low, self.action_space.high)
-        timestep = self._env.step(action)
+        native_action = self.rescale_action(action)
+        timestep = self._env.step(native_action)
         self._step_count += 1
 
         action_penalty = 0.002 * float(np.mean(np.square(action)))
@@ -79,6 +82,25 @@ class SingleNotePianoGymEnv(gym.Env):
         info = self._info(debug_reward=reward, action_penalty=action_penalty)
         self._last_info = info
         return observation, float(reward), terminated, truncated, info
+
+    def rescale_action(self, normalized_action) -> np.ndarray:
+        """Map normalized `[-1, 1]` action to the public native 22D action bounds."""
+
+        normalized_action = np.asarray(normalized_action, dtype=np.float32)
+        normalized_action = np.clip(
+            normalized_action,
+            self.action_space.low,
+            self.action_space.high,
+        )
+        fraction = (normalized_action + 1.0) / 2.0
+        native = self._native_action_low + fraction * (
+            self._native_action_high - self._native_action_low
+        )
+        return native.astype(self._env.action_spec().dtype)
+
+    @property
+    def native_action_bounds(self) -> tuple[np.ndarray, np.ndarray]:
+        return self._native_action_low.copy(), self._native_action_high.copy()
 
     def _observation(self) -> np.ndarray:
         target_state = self._env.target_key_state(TARGET_KEY) or 0.0
@@ -137,6 +159,7 @@ class SingleNotePianoGymEnv(gym.Env):
             "native_reward": None if native_reward is None else float(native_reward),
             "debug_reward": float(debug_reward),
             "action_penalty": float(action_penalty),
+            "action_space_mode": "normalized_minus_one_to_one",
             "target_contact": target_contact,
             "any_key_contact": any_key_contact,
             "clean_target_press": clean,

@@ -52,7 +52,7 @@ def evaluate_model(
     native_reward = 0.0
     max_target = 0.0
     max_wrong = 0.0
-    max_key_states = {52: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
+    max_key_states = {52: 0.0, 53: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
     max_unintended = 0.0
     max_residual_magnitude = 0.0
     max_action_deviation = 0.0
@@ -109,10 +109,7 @@ def evaluate_model(
         "deterministic": deterministic,
         "max_target_key_state": max_target,
         "max_wrong_key_state": max_wrong,
-        "max_key_52_state": max_key_states[52],
-        "max_key_54_state": max_key_states[54],
-        "max_key_55_state": max_key_states[55],
-        "max_key_56_state": max_key_states[56],
+        **{f"max_key_{key}_state": value for key, value in max_key_states.items()},
         "max_unintended_key_state": max_unintended,
         "pressed_keys": sorted(pressed),
         "clean_press": pressed == {target_key},
@@ -136,7 +133,7 @@ def evaluate_native_zero(target_midi: int, wrong_key: int):
     action = np.zeros(env.action_spec().shape, dtype=env.action_spec().dtype)
     max_target = 0.0
     max_wrong = 0.0
-    max_key_states = {52: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
+    max_key_states = {52: 0.0, 53: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
     max_unintended = 0.0
     pressed = set()
     shaped_return = 0.0
@@ -165,10 +162,7 @@ def evaluate_native_zero(target_midi: int, wrong_key: int):
         "wrong_key": wrong_key,
         "max_target_key_state": max_target,
         "max_wrong_key_state": max_wrong,
-        "max_key_52_state": max_key_states[52],
-        "max_key_54_state": max_key_states[54],
-        "max_key_55_state": max_key_states[55],
-        "max_key_56_state": max_key_states[56],
+        **{f"max_key_{key}_state": value for key, value in max_key_states.items()},
         "max_unintended_key_state": max_unintended,
         "pressed_keys": sorted(pressed),
         "clean_press": pressed == {target_key},

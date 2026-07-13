@@ -53,3 +53,31 @@ def test_hybrid_controller_routes_configured_residual_policy(tmp_path):
 
     assert action.shape == (22,)
     assert not np.allclose(action, fallback)
+
+
+def test_hybrid_controller_can_route_dsharp5_and_d5_policies(tmp_path):
+    midi_path = tmp_path / "d5.mid"
+    write_monophonic_midi([NoteEvent(74, 0.0, 1.0, 90)], midi_path)
+    env = ALAOneHandEnv(midi_path)
+    env.reset()
+    controller = HybridPipeline1Controller(None)
+    for midi in (75, 74):
+        helper = ResidualSingleNoteEnv(
+            midi_path=tmp_path / f"helper_{midi}.mid",
+            target_midi=midi,
+            wrong_key=54 if midi == 74 else 50,
+            base_action=np.zeros(22, dtype=np.float32),
+        )
+        controller.policies[midi] = ResidualPolicy(
+            target_midi=midi,
+            model_path=tmp_path / f"fake_{midi}.zip",
+            model=_FakeModel(),
+            helper_env=helper,
+        )
+
+    fallback = np.ones(env.action_spec().shape, dtype=env.action_spec().dtype)
+    action = controller.action(env, target_midi=74, fallback_action=fallback, step_count=5)
+
+    assert set(controller.policies) == {74, 75}
+    assert action.shape == (22,)
+    assert not np.allclose(action, fallback)

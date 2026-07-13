@@ -38,6 +38,7 @@ def _print_result(label, result) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--residual-model-path", type=Path, default=DEFAULT_DSHARP5_MODEL)
+    parser.add_argument("--d5-residual-model-path", type=Path, default=None)
     parser.add_argument("--csharp5-residual-model-path", type=Path, default=None)
     args = parser.parse_args()
 
@@ -53,13 +54,16 @@ def main() -> None:
     residual_paths = {}
     if args.residual_model_path is not None and args.residual_model_path.exists():
         residual_paths[75] = args.residual_model_path
+    if args.d5_residual_model_path is not None and args.d5_residual_model_path.exists():
+        residual_paths[74] = args.d5_residual_model_path
     if args.csharp5_residual_model_path is not None and args.csharp5_residual_model_path.exists():
         residual_paths[73] = args.csharp5_residual_model_path
 
     if not residual_paths:
         print(
             "residual_models_missing="
-            f"D#5:{args.residual_model_path}, C#5:{args.csharp5_residual_model_path}; ran v0 only"
+            f"D#5:{args.residual_model_path}, D5:{args.d5_residual_model_path}, "
+            f"C#5:{args.csharp5_residual_model_path}; ran v0 only"
         )
         _print_result("v0_action_library", v0)
         return

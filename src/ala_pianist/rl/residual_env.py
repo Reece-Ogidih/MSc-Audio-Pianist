@@ -23,6 +23,8 @@ from ala_pianist.music import NoteEvent, write_monophonic_midi
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 C_SHARP_5_MIDI = 73
 C_SHARP_5_KEY = C_SHARP_5_MIDI - 21
+D5_MIDI = 74
+D5_KEY = D5_MIDI - 21
 CONSTRAINED_CLEANLINESS_TARGET_THRESHOLD = 0.7
 REWARD_MODES = ("target_travel_first", "cleanliness", "constrained_cleanliness")
 
@@ -30,6 +32,7 @@ REWARD_MODES = ("target_travel_first", "cleanliness", "constrained_cleanliness")
 # sentinel documents that the prior is the dirty D#5 action, not a clean teacher.
 D_SHARP_5_DIRTY_BASE_ACTION = "random_search_seed_7_candidate_2"
 C_SHARP_5_DIRTY_BASE_ACTION = "csharp5_base_search_best"
+D5_DIRTY_BASE_ACTION = "d5_base_search_best"
 
 
 class ResidualSingleNoteEnv(gym.Env):
@@ -285,6 +288,8 @@ def get_dirty_base_action(
         return get_dirty_dsharp5_base_action(midi_path)
     if target_midi == C_SHARP_5_MIDI:
         return get_dirty_csharp5_base_action()
+    if target_midi == D5_MIDI:
+        return get_dirty_d5_base_action()
     raise ValueError(
         f"No dirty base action is available for MIDI {target_midi}. "
         "Run a bounded base-action discovery first."
@@ -317,6 +322,24 @@ def get_dirty_csharp5_base_action(
     action = np.asarray(summary["best"]["action"], dtype=np.float32)
     if action.shape != (22,):
         raise ValueError(f"Expected C#5 base action shape (22,), got {action.shape}.")
+    return action
+
+
+def get_dirty_d5_base_action(
+    summary_path: str | Path = ROOT / "experiments" / "d5_base_search" / "d5_base_search_summary.json",
+) -> np.ndarray:
+    """Load the discovered D5 base action from the ignored search artifact."""
+
+    path = Path(summary_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Expected D5 base-action summary at {path}. "
+            "Run scripts/find_d5_base_action.py first."
+        )
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    action = np.asarray(summary["best"]["action"], dtype=np.float32)
+    if action.shape != (22,):
+        raise ValueError(f"Expected D5 base action shape (22,), got {action.shape}.")
     return action
 
 
@@ -382,10 +405,7 @@ def residual_info(
         "wrong_keys": tuple(int(key) for key in wrong_keys),
         "wrong_key_state": float(wrong_key_state),
         "wrong_key_states": key_states,
-        "key_52_state": float(env.target_key_state(52) or 0.0),
-        "key_54_state": float(env.target_key_state(54) or 0.0),
-        "key_55_state": float(env.target_key_state(55) or 0.0),
-        "key_56_state": float(env.target_key_state(56) or 0.0),
+        **tracked_key_state_fields(env),
         "target_key_state": float(target_state),
         "max_unintended_key_state": float(max_unintended),
         "pressed_keys": pressed,
@@ -438,7 +458,7 @@ def evaluate_residual_action(
     native_reward = 0.0
     max_target = 0.0
     max_wrong = 0.0
-    max_key_states = {52: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
+    max_key_states = {key: 0.0 for key in TRACKED_KEY_STATES}
     max_unintended = 0.0
     max_residual_magnitude = 0.0
     max_action_deviation = 0.0
@@ -466,10 +486,7 @@ def evaluate_residual_action(
         "wrong_keys": tuple(infer_wrong_keys(target_midi) if wrong_keys is None else wrong_keys),
         "max_target_key_state": max_target,
         "max_wrong_key_state": max_wrong,
-        "max_key_52_state": max_key_states[52],
-        "max_key_54_state": max_key_states[54],
-        "max_key_55_state": max_key_states[55],
-        "max_key_56_state": max_key_states[56],
+        **{f"max_key_{key}_state": value for key, value in max_key_states.items()},
         "max_unintended_key_state": max_unintended,
         "pressed_keys": sorted(pressed),
         "clean_press": pressed == {target_key},
@@ -491,6 +508,8 @@ def infer_wrong_key(target_midi: int) -> int:
     target_midi = int(target_midi)
     if target_midi == C_SHARP_5_MIDI:
         return D_SHARP_5_KEY
+    if target_midi == D5_MIDI:
+        return D_SHARP_5_KEY
     if target_midi == D_SHARP_5_MIDI:
         return 50
     return max(0, min(87, target_midi - 21 - 2))
@@ -500,7 +519,19 @@ def infer_wrong_keys(target_midi: int) -> tuple[int, ...]:
     target_midi = int(target_midi)
     if target_midi == C_SHARP_5_MIDI:
         return (54, 55, 56)
+    if target_midi == D5_MIDI:
+        return (52, 54, 55, 56)
     return (infer_wrong_key(target_midi),)
+
+
+TRACKED_KEY_STATES = (52, 53, 54, 55, 56)
+
+
+def tracked_key_state_fields(env: ALAOneHandEnv) -> dict[str, float]:
+    return {
+        f"key_{key}_state": float(env.target_key_state(key) or 0.0)
+        for key in TRACKED_KEY_STATES
+    }
 
 
 def note_name(midi_pitch: int) -> str:

@@ -31,6 +31,29 @@ def test_residual_env_reward_modes_supported(tmp_path):
         assert info["reward_mode"] == mode
 
 
+def test_residual_env_supports_configurable_csharp5_target(tmp_path):
+    env = ResidualSingleNoteEnv(
+        midi_path=tmp_path / "csharp5.mid",
+        target_midi=73,
+        wrong_key=54,
+        reward_mode="cleanliness",
+        base_action=np.zeros(22, dtype=np.float32),
+    )
+    obs, info = env.reset()
+
+    assert env.observation_space.contains(obs)
+    assert info["target_midi"] == 73
+    assert info["target_key"] == 52
+    assert info["wrong_key"] == 54
+    assert info["sustain_state"] == 0.0
+
+    obs, reward, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+    assert env.observation_space.contains(obs)
+    assert np.isfinite(reward)
+    assert "wrong_key_state" in info
+    assert info["sustain_state"] == 0.0
+
+
 def test_dirty_dsharp5_base_action_available(tmp_path):
     action = get_dirty_dsharp5_base_action(tmp_path / "base.mid")
     assert action.shape == (22,)

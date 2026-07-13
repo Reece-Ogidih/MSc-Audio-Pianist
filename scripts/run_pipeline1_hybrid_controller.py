@@ -11,6 +11,7 @@ from ala_pianist.pipelines import run_pipeline1
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 OUT_DIR = ROOT / "experiments" / "pipeline1_hybrid"
 DEFAULT_MODEL = ROOT / "experiments" / "residual_single_note" / "residual_sac_cleanliness_scale_0.1"
+DEFAULT_DSHARP5_MODEL = DEFAULT_MODEL
 
 
 def _print_result(label, result) -> None:
@@ -36,7 +37,8 @@ def _print_result(label, result) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--residual-model-path", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--residual-model-path", type=Path, default=DEFAULT_DSHARP5_MODEL)
+    parser.add_argument("--csharp5-residual-model-path", type=Path, default=None)
     args = parser.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,12 +50,21 @@ def main() -> None:
         build_library=True,
     )
 
-    if args.residual_model_path is None or not args.residual_model_path.exists():
-        print(f"residual_model_missing={args.residual_model_path}; ran v0 only")
+    residual_paths = {}
+    if args.residual_model_path is not None and args.residual_model_path.exists():
+        residual_paths[75] = args.residual_model_path
+    if args.csharp5_residual_model_path is not None and args.csharp5_residual_model_path.exists():
+        residual_paths[73] = args.csharp5_residual_model_path
+
+    if not residual_paths:
+        print(
+            "residual_models_missing="
+            f"D#5:{args.residual_model_path}, C#5:{args.csharp5_residual_model_path}; ran v0 only"
+        )
         _print_result("v0_action_library", v0)
         return
 
-    controller = HybridPipeline1Controller(args.residual_model_path)
+    controller = HybridPipeline1Controller(residual_model_paths=residual_paths)
     v1 = run_pipeline1(
         audio_path=OUT_DIR / "v1_audio.wav",
         library_path=OUT_DIR / "keyset_action_library.json",
@@ -64,7 +75,7 @@ def main() -> None:
     )
     combined = {
         "keyset": list(KEYSET_MIDI),
-        "residual_model_path": str(args.residual_model_path),
+        "residual_model_paths": {str(key): str(value) for key, value in residual_paths.items()},
         "v0": asdict(v0),
         "v1": asdict(v1),
     }
@@ -72,7 +83,7 @@ def main() -> None:
     combined_path.write_text(json.dumps(combined, indent=2, sort_keys=True), encoding="utf-8")
 
     print(f"summary_path={combined_path}")
-    print(f"residual_model_path={args.residual_model_path}")
+    print(f"residual_model_paths={residual_paths}")
     _print_result("v0_action_library", v0)
     _print_result("v1_hybrid", v1)
 

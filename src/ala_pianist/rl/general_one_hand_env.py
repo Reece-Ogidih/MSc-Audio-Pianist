@@ -179,6 +179,15 @@ class GeneralOneHandGoalEnv(gym.Env):
         native = self._native_low + fraction * (self._native_high - self._native_low)
         return native.astype(self._native_action_spec.dtype)
 
+    def normalize_native_action(self, native_action) -> np.ndarray:
+        """Map native 22D RoboPianist actions into normalized `[-1, 1]` space."""
+
+        native_action = np.asarray(native_action, dtype=np.float32)
+        native_action = np.clip(native_action, self._native_low, self._native_high)
+        span = np.where(self._native_high > self._native_low, self._native_high - self._native_low, 1.0)
+        normalized = 2.0 * (native_action - self._native_low) / span - 1.0
+        return np.clip(normalized, -1.0, 1.0).astype(np.float32)
+
     def current_target_keys(self) -> list[int]:
         goal_frame = self._current_goal_frame()
         return [int(key) for key in np.flatnonzero(goal_frame[:-1] > 0.5)]
@@ -189,9 +198,14 @@ class GeneralOneHandGoalEnv(gym.Env):
     def piano_key_states(self) -> np.ndarray:
         return np.asarray(self.task.piano.normalized_state, dtype=np.float32).copy()
 
-    def max_unintended_key_state(self) -> float:
+    def target_key_state(self, key_index: int | None) -> float | None:
+        if key_index is None:
+            return None
+        return float(self.piano_key_states()[int(key_index)])
+
+    def max_unintended_key_state(self, target_key: int | None = None) -> float:
         states = self.piano_key_states()
-        target_keys = set(self.current_target_keys())
+        target_keys = {int(target_key)} if target_key is not None else set(self.current_target_keys())
         if target_keys:
             mask = np.ones(states.shape, dtype=bool)
             for key in target_keys:
@@ -199,6 +213,40 @@ class GeneralOneHandGoalEnv(gym.Env):
                     mask[key] = False
             states = states[mask]
         return float(np.max(states)) if states.size else 0.0
+
+    def fingertip_positions(self) -> dict[str, np.ndarray]:
+        sites = self.task._hand.fingertip_sites
+        positions = self.env.physics.bind(sites).xpos.copy()
+        return {str(site.name): positions[idx].copy() for idx, site in enumerate(sites)}
+
+    def key_press_region_position(self, key_index: int) -> np.ndarray:
+        geom = self.task.piano.keys[int(key_index)].geom[0]
+        position = self.env.physics.bind(geom).xpos.copy()
+        size = self.env.physics.bind(geom).size.copy()
+        position[-1] += 0.5 * size[2]
+        position[0] += 0.35 * size[0]
+        return position
+
+    def nearest_fingertip_to_key(self, key_index: int | None) -> dict[str, Any] | None:
+        if key_index is None:
+            return None
+        key_position = self.key_press_region_position(int(key_index))
+        fingertips = self.fingertip_positions()
+        best_name = None
+        best_position = None
+        best_distance = float("inf")
+        for name, position in fingertips.items():
+            distance = float(np.linalg.norm(position - key_position))
+            if distance < best_distance:
+                best_name = name
+                best_position = position
+                best_distance = distance
+        return {
+            "fingertip": best_name,
+            "distance": best_distance,
+            "fingertip_position": best_position,
+            "key_position": key_position,
+        }
 
     def _flatten_observation(self, timestep) -> tuple[tuple[str, ...], np.ndarray]:
         obs = timestep.observation

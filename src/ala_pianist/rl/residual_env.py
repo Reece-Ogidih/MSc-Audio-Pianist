@@ -23,7 +23,8 @@ from ala_pianist.music import NoteEvent, write_monophonic_midi
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 C_SHARP_5_MIDI = 73
 C_SHARP_5_KEY = C_SHARP_5_MIDI - 21
-REWARD_MODES = ("target_travel_first", "cleanliness")
+CONSTRAINED_CLEANLINESS_TARGET_THRESHOLD = 0.7
+REWARD_MODES = ("target_travel_first", "cleanliness", "constrained_cleanliness")
 
 # Regenerated from the known useful random-search path when possible. This
 # sentinel documents that the prior is the dirty D#5 action, not a clean teacher.
@@ -42,9 +43,11 @@ class ResidualSingleNoteEnv(gym.Env):
         midi_path: str | Path | None = None,
         target_midi: int = D_SHARP_5_MIDI,
         wrong_key: int | None = None,
+        wrong_keys: tuple[int, ...] | list[int] | None = None,
         horizon_steps: int = 24,
         residual_scale: float = 0.1,
         reward_mode: str = "target_travel_first",
+        base_action_penalty: float = 0.0,
         base_action: np.ndarray | None = None,
         base_action_source: str = "auto",
     ):
@@ -55,6 +58,12 @@ class ResidualSingleNoteEnv(gym.Env):
         self.target_key = self.target_midi - 21
         self.target_note = note_name(self.target_midi)
         self.wrong_key = infer_wrong_key(self.target_midi) if wrong_key is None else int(wrong_key)
+        self.wrong_keys = tuple(
+            int(key)
+            for key in (infer_wrong_keys(self.target_midi) if wrong_keys is None else wrong_keys)
+        )
+        if self.wrong_key not in self.wrong_keys:
+            self.wrong_keys = (self.wrong_key, *self.wrong_keys)
         self.midi_path = Path(
             midi_path
             or ROOT / "tmp" / f"residual_midi{self.target_midi}_single_note.mid"
@@ -62,6 +71,7 @@ class ResidualSingleNoteEnv(gym.Env):
         self.horizon_steps = int(horizon_steps)
         self.residual_scale = float(residual_scale)
         self.reward_mode = reward_mode
+        self.base_action_penalty = float(base_action_penalty)
         self.base_action_source = str(base_action_source)
         write_single_note_residual_midi(self.midi_path, target_midi=self.target_midi)
 
@@ -103,7 +113,7 @@ class ResidualSingleNoteEnv(gym.Env):
         self._env.reset()
         self._step_count = 0
         self._previous_residual = np.zeros(self.action_space.shape, dtype=np.float32)
-        return self._observation(), self._info(0.0, 0.0, 0.0)
+        return self._observation(), self._info(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     def step(self, action):
         residual = np.asarray(action, dtype=np.float32)
@@ -120,8 +130,11 @@ class ResidualSingleNoteEnv(gym.Env):
 
         action_penalty = 0.001 * float(np.mean(np.square(residual)))
         smoothness_penalty = 0.001 * float(np.mean(np.square(residual - self._previous_residual)))
+        residual_magnitude = float(np.mean(np.square(residual)))
+        action_deviation = float(np.mean(np.square(normalized_action - self.base_normalized_action)))
+        base_action_penalty = self.base_action_penalty * residual_magnitude
         self._previous_residual = residual.copy()
-        reward = self._reward(action_penalty, smoothness_penalty)
+        reward = self._reward(action_penalty, smoothness_penalty, base_action_penalty)
         terminated = bool(timestep.last())
         truncated = self._step_count >= self.horizon_steps and not terminated
         return (
@@ -129,7 +142,14 @@ class ResidualSingleNoteEnv(gym.Env):
             float(reward),
             terminated,
             truncated,
-            self._info(reward, action_penalty, smoothness_penalty),
+            self._info(
+                reward,
+                action_penalty,
+                smoothness_penalty,
+                base_action_penalty,
+                residual_magnitude,
+                action_deviation,
+            ),
         )
 
     def rescale_action(self, normalized_action) -> np.ndarray:
@@ -155,9 +175,18 @@ class ResidualSingleNoteEnv(gym.Env):
             horizon_steps=self.horizon_steps,
         )
 
-    def _reward(self, action_penalty: float, smoothness_penalty: float) -> float:
+    def _reward(
+        self,
+        action_penalty: float,
+        smoothness_penalty: float,
+        base_action_penalty: float,
+    ) -> float:
         target_state = self._env.target_key_state(self.target_key) or 0.0
-        wrong_key_state = self._env.target_key_state(self.wrong_key) or 0.0
+        wrong_key_states = {
+            key: self._env.target_key_state(key) or 0.0 for key in self.wrong_keys
+        }
+        wrong_key_state = wrong_key_states.get(self.wrong_key, 0.0)
+        tracked_wrong_state = sum(wrong_key_states.values())
         max_unintended = self._env.max_unintended_key_state(self.target_key)
         pressed = self._env.current_pressed_keys()
         wrong_count = len([key for key in pressed if key != self.target_key])
@@ -169,6 +198,28 @@ class ResidualSingleNoteEnv(gym.Env):
                 - 0.5 * max_unintended
                 - action_penalty
                 - smoothness_penalty
+                - base_action_penalty
+            )
+        if self.reward_mode == "constrained_cleanliness":
+            if target_state < CONSTRAINED_CLEANLINESS_TARGET_THRESHOLD:
+                return (
+                    18.0 * target_state
+                    + (4.0 if target_active else 0.0)
+                    - 0.25 * max_unintended
+                    - action_penalty
+                    - smoothness_penalty
+                    - base_action_penalty
+                )
+            return (
+                14.0 * target_state
+                + (6.0 if target_active else 0.0)
+                + (4.0 if pressed == [self.target_key] else 0.0)
+                - 10.0 * tracked_wrong_state
+                - 6.0 * max_unintended
+                - 4.0 * wrong_count
+                - action_penalty
+                - smoothness_penalty
+                - base_action_penalty
             )
         return (
             10.0 * target_state
@@ -179,20 +230,34 @@ class ResidualSingleNoteEnv(gym.Env):
             - 3.0 * wrong_count
             - action_penalty
             - smoothness_penalty
+            - base_action_penalty
         )
 
-    def _info(self, reward: float, action_penalty: float, smoothness_penalty: float) -> dict[str, Any]:
+    def _info(
+        self,
+        reward: float,
+        action_penalty: float,
+        smoothness_penalty: float,
+        base_action_penalty: float,
+        residual_magnitude: float,
+        action_deviation_from_base: float,
+    ) -> dict[str, Any]:
         return residual_info(
             self._env,
             target_midi=self.target_midi,
             target_key=self.target_key,
             target_note=self.target_note,
             wrong_key=self.wrong_key,
+            wrong_keys=self.wrong_keys,
             reward=float(reward),
             action_penalty=action_penalty,
             smoothness_penalty=smoothness_penalty,
+            base_action_penalty=base_action_penalty,
+            residual_magnitude=residual_magnitude,
+            action_deviation_from_base=action_deviation_from_base,
             reward_mode=self.reward_mode,
             residual_scale=self.residual_scale,
+            base_action_penalty_weight=self.base_action_penalty,
             base_action_source=self.base_action_source,
         )
 
@@ -291,15 +356,21 @@ def residual_info(
     target_key: int,
     target_note: str,
     wrong_key: int,
+    wrong_keys: tuple[int, ...],
     reward: float,
     action_penalty: float,
     smoothness_penalty: float,
+    base_action_penalty: float,
+    residual_magnitude: float,
+    action_deviation_from_base: float,
     reward_mode: str,
     residual_scale: float,
+    base_action_penalty_weight: float,
     base_action_source: str,
 ) -> dict[str, Any]:
     target_state = env.target_key_state(target_key) or 0.0
     wrong_key_state = env.target_key_state(wrong_key) or 0.0
+    key_states = {int(key): float(env.target_key_state(key) or 0.0) for key in wrong_keys}
     max_unintended = env.max_unintended_key_state(target_key)
     pressed = tuple(env.current_pressed_keys())
     native_reward = env.current_reward()
@@ -308,7 +379,13 @@ def residual_info(
         "target_note": str(target_note),
         "target_key": int(target_key),
         "wrong_key": int(wrong_key),
+        "wrong_keys": tuple(int(key) for key in wrong_keys),
         "wrong_key_state": float(wrong_key_state),
+        "wrong_key_states": key_states,
+        "key_52_state": float(env.target_key_state(52) or 0.0),
+        "key_54_state": float(env.target_key_state(54) or 0.0),
+        "key_55_state": float(env.target_key_state(55) or 0.0),
+        "key_56_state": float(env.target_key_state(56) or 0.0),
         "target_key_state": float(target_state),
         "max_unintended_key_state": float(max_unintended),
         "pressed_keys": pressed,
@@ -320,6 +397,10 @@ def residual_info(
         "debug_reward": float(reward),
         "action_penalty": float(action_penalty),
         "smoothness_penalty": float(smoothness_penalty),
+        "base_action_penalty": float(base_action_penalty),
+        "base_action_penalty_weight": float(base_action_penalty_weight),
+        "residual_magnitude": float(residual_magnitude),
+        "action_deviation_from_base": float(action_deviation_from_base),
         "reward_mode": reward_mode,
         "residual_scale": float(residual_scale),
         "base_action_source": base_action_source,
@@ -332,20 +413,24 @@ def evaluate_residual_action(
     residual_action: np.ndarray | None = None,
     target_midi: int = D_SHARP_5_MIDI,
     wrong_key: int | None = None,
+    wrong_keys: tuple[int, ...] | list[int] | None = None,
     base_action: np.ndarray | None = None,
     base_action_source: str = "auto",
     residual_scale: float = 0.1,
     reward_mode: str = "cleanliness",
+    base_action_penalty: float = 0.0,
     horizon_steps: int = 24,
 ) -> dict:
     env = ResidualSingleNoteEnv(
         target_midi=target_midi,
         wrong_key=wrong_key,
+        wrong_keys=wrong_keys,
         base_action=base_action,
         base_action_source=base_action_source,
         horizon_steps=horizon_steps,
         residual_scale=residual_scale,
         reward_mode=reward_mode,
+        base_action_penalty=base_action_penalty,
     )
     env.reset()
     residual = np.zeros(env.action_space.shape, dtype=np.float32) if residual_action is None else residual_action
@@ -353,7 +438,10 @@ def evaluate_residual_action(
     native_reward = 0.0
     max_target = 0.0
     max_wrong = 0.0
+    max_key_states = {52: 0.0, 54: 0.0, 55: 0.0, 56: 0.0}
     max_unintended = 0.0
+    max_residual_magnitude = 0.0
+    max_action_deviation = 0.0
     pressed = set()
     for _ in range(horizon_steps):
         _, reward, terminated, truncated, info = env.step(residual)
@@ -361,7 +449,11 @@ def evaluate_residual_action(
         native_reward += 0.0 if info["native_reward"] is None else float(info["native_reward"])
         max_target = max(max_target, float(info["target_key_state"]))
         max_wrong = max(max_wrong, float(info["wrong_key_state"]))
+        for key in max_key_states:
+            max_key_states[key] = max(max_key_states[key], float(info[f"key_{key}_state"]))
         max_unintended = max(max_unintended, float(info["max_unintended_key_state"]))
+        max_residual_magnitude = max(max_residual_magnitude, float(info["residual_magnitude"]))
+        max_action_deviation = max(max_action_deviation, float(info["action_deviation_from_base"]))
         pressed.update(info["pressed_keys"])
         if terminated or truncated:
             break
@@ -371,8 +463,13 @@ def evaluate_residual_action(
         "target_key": target_key,
         "target_note": note_name(target_midi),
         "wrong_key": infer_wrong_key(target_midi) if wrong_key is None else int(wrong_key),
+        "wrong_keys": tuple(infer_wrong_keys(target_midi) if wrong_keys is None else wrong_keys),
         "max_target_key_state": max_target,
         "max_wrong_key_state": max_wrong,
+        "max_key_52_state": max_key_states[52],
+        "max_key_54_state": max_key_states[54],
+        "max_key_55_state": max_key_states[55],
+        "max_key_56_state": max_key_states[56],
         "max_unintended_key_state": max_unintended,
         "pressed_keys": sorted(pressed),
         "clean_press": pressed == {target_key},
@@ -381,6 +478,8 @@ def evaluate_residual_action(
         "missed": target_key not in pressed and max_target < 0.25,
         "shaped_return": total_reward,
         "native_reward_sum": native_reward,
+        "max_residual_magnitude": max_residual_magnitude,
+        "max_action_deviation_from_base": max_action_deviation,
     }
 
 
@@ -395,6 +494,13 @@ def infer_wrong_key(target_midi: int) -> int:
     if target_midi == D_SHARP_5_MIDI:
         return 50
     return max(0, min(87, target_midi - 21 - 2))
+
+
+def infer_wrong_keys(target_midi: int) -> tuple[int, ...]:
+    target_midi = int(target_midi)
+    if target_midi == C_SHARP_5_MIDI:
+        return (54, 55, 56)
+    return (infer_wrong_key(target_midi),)
 
 
 def note_name(midi_pitch: int) -> str:

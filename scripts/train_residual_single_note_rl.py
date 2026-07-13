@@ -6,9 +6,11 @@ import time
 from stable_baselines3 import SAC
 
 from ala_pianist.rl.residual_env import (
+    REWARD_MODES,
     ResidualSingleNoteEnv,
     evaluate_residual_action,
     infer_wrong_key,
+    infer_wrong_keys,
     note_name,
 )
 
@@ -21,9 +23,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-midi", type=int, default=75)
     parser.add_argument("--wrong-key", type=int, default=None)
+    parser.add_argument("--wrong-keys", default=None, help="Comma-separated key indices to penalise.")
     parser.add_argument("--timesteps", type=int, default=5000)
-    parser.add_argument("--reward-mode", choices=["target_travel_first", "cleanliness"], default="target_travel_first")
+    parser.add_argument("--reward-mode", choices=REWARD_MODES, default="target_travel_first")
     parser.add_argument("--residual-scale", type=float, default=0.1)
+    parser.add_argument("--base-action-penalty", type=float, default=0.0)
     parser.add_argument("--base-action-source", default="auto")
     parser.add_argument("--seed", type=int, default=31)
     parser.add_argument("--output-dir", type=Path, default=OUT_DIR)
@@ -31,15 +35,19 @@ def main() -> None:
 
     target_key = args.target_midi - 21
     wrong_key = infer_wrong_key(args.target_midi) if args.wrong_key is None else args.wrong_key
+    wrong_keys = _parse_wrong_keys(args.wrong_keys, args.target_midi)
     scale_label = str(args.residual_scale).replace(".", "p")
+    penalty_label = str(args.base_action_penalty).replace(".", "p")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     env = ResidualSingleNoteEnv(
         midi_path=ROOT / "tmp" / f"residual_midi{args.target_midi}_train.mid",
         target_midi=args.target_midi,
         wrong_key=wrong_key,
+        wrong_keys=wrong_keys,
         horizon_steps=24,
         residual_scale=args.residual_scale,
         reward_mode=args.reward_mode,
+        base_action_penalty=args.base_action_penalty,
         base_action_source=args.base_action_source,
     )
     model = SAC(
@@ -58,16 +66,21 @@ def main() -> None:
     base_metrics = evaluate_residual_action(
         target_midi=args.target_midi,
         wrong_key=wrong_key,
+        wrong_keys=wrong_keys,
         base_action_source=args.base_action_source,
         residual_scale=args.residual_scale,
         reward_mode=args.reward_mode,
+        base_action_penalty=args.base_action_penalty,
     )
     start = time.time()
     model.learn(total_timesteps=args.timesteps)
     runtime = time.time() - start
     model_path = (
         args.output_dir
-        / f"residual_sac_midi{args.target_midi}_{args.reward_mode}_scale_{scale_label}"
+        / (
+            f"residual_sac_midi{args.target_midi}_{args.reward_mode}"
+            f"_scale_{scale_label}_penalty_{penalty_label}"
+        )
     )
     model.save(model_path)
     saved_model_path = model_path if model_path.exists() else model_path.with_suffix(model_path.suffix + ".zip")
@@ -77,9 +90,11 @@ def main() -> None:
         "target_key": target_key,
         "target_note": note_name(args.target_midi),
         "wrong_key": wrong_key,
+        "wrong_keys": wrong_keys,
         "timesteps": args.timesteps,
         "reward_mode": args.reward_mode,
         "residual_scale": args.residual_scale,
+        "base_action_penalty": args.base_action_penalty,
         "base_action_source": args.base_action_source,
         "seed": args.seed,
         "runtime_seconds": runtime,
@@ -88,7 +103,10 @@ def main() -> None:
     }
     summary_path = (
         args.output_dir
-        / f"residual_sac_midi{args.target_midi}_{args.reward_mode}_{args.timesteps}_summary.json"
+        / (
+            f"residual_sac_midi{args.target_midi}_{args.reward_mode}"
+            f"_scale_{scale_label}_penalty_{penalty_label}_{args.timesteps}_summary.json"
+        )
     )
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -96,13 +114,21 @@ def main() -> None:
     print(f"target_key={target_key}")
     print(f"target_note={note_name(args.target_midi)}")
     print(f"wrong_key={wrong_key}")
+    print(f"wrong_keys={wrong_keys}")
     print(f"timesteps={args.timesteps}")
     print(f"reward_mode={args.reward_mode}")
     print(f"residual_scale={args.residual_scale}")
+    print(f"base_action_penalty={args.base_action_penalty}")
     print(f"runtime_seconds={runtime:.2f}")
     print(f"model_path={saved_model_path}")
     print(f"summary_path={summary_path}")
     print(f"base_action_metrics={base_metrics}")
+
+
+def _parse_wrong_keys(value: str | None, target_midi: int) -> tuple[int, ...]:
+    if value is None or value.strip() == "":
+        return infer_wrong_keys(target_midi)
+    return tuple(int(part.strip()) for part in value.split(",") if part.strip())
 
 
 if __name__ == "__main__":

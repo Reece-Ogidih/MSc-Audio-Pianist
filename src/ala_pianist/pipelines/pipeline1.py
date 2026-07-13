@@ -24,6 +24,9 @@ class NoteRolloutMetric:
     max_unintended_key_state: float
     pressed_keys: tuple[int, ...]
     outcome: str
+    strict_outcome: str
+    trajectory_quality: str
+    nearby_key_states: dict[int, float]
     clean_press: bool
     dirty_press: bool
     missed: bool
@@ -54,6 +57,13 @@ def default_pipeline1_events() -> list[NoteEvent]:
         NoteEvent(73, 0.40, 0.28, 90),
         NoteEvent(75, 0.80, 0.28, 90),
         NoteEvent(71, 1.20, 0.28, 90),
+    ]
+
+
+def pipeline1_events_from_pitches(pitches: list[int] | tuple[int, ...]) -> list[NoteEvent]:
+    return [
+        NoteEvent(int(pitch), 0.40 * index, 0.28, 90)
+        for index, pitch in enumerate(pitches)
     ]
 
 
@@ -125,6 +135,7 @@ def _rollout_note(
     library_action = np.asarray(entry.action, dtype=env.action_spec().dtype)
     max_target = 0.0
     max_unintended = 0.0
+    nearby_key_states = {key: 0.0 for key in _nearby_keys(entry.key_index)}
     pressed = set()
     contact_pairs = set()
     closest_finger = "unknown"
@@ -144,6 +155,8 @@ def _rollout_note(
         timestep = env.step(action)
         max_target = max(max_target, env.target_key_state(entry.key_index) or 0.0)
         max_unintended = max(max_unintended, env.max_unintended_key_state(entry.key_index))
+        for key in nearby_key_states:
+            nearby_key_states[key] = max(nearby_key_states[key], env.target_key_state(key) or 0.0)
         pressed.update(env.current_pressed_keys())
         closest = env.nearest_fingertip_to_key(entry.key_index)
         if closest is not None:
@@ -160,6 +173,7 @@ def _rollout_note(
     clean = pressed == {entry.key_index}
     dirty = entry.key_index in pressed and not clean
     missed = not clean and not dirty and not (max_target >= 0.25 and max_unintended <= max_target + 0.02)
+    strict_outcome = _strict_outcome(entry.key_index, pressed, max_target, max_unintended)
     return NoteRolloutMetric(
         midi_pitch=entry.midi_pitch,
         key_index=entry.key_index,
@@ -167,6 +181,9 @@ def _rollout_note(
         max_unintended_key_state=float(max_unintended),
         pressed_keys=tuple(sorted(pressed)),
         outcome=outcome,
+        strict_outcome=strict_outcome,
+        trajectory_quality=_trajectory_quality(strict_outcome, max_unintended),
+        nearby_key_states={int(key): float(value) for key, value in nearby_key_states.items()},
         clean_press=clean,
         dirty_press=dirty,
         missed=missed,
@@ -188,6 +205,30 @@ def _outcome(target_key: int, pressed: set[int], max_target: float, max_unintend
     if max_target > 0.02:
         return "partial"
     return "missed"
+
+
+def _strict_outcome(target_key: int, pressed: set[int], max_target: float, max_unintended: float) -> str:
+    if pressed == {target_key} and max_unintended < 0.25:
+        return "clean_low_unintended"
+    if pressed == {target_key}:
+        return "clean_high_unintended"
+    if target_key in pressed:
+        return "dirty_pressed_wrong_key"
+    if max_target >= 0.25 and max_unintended < 0.25:
+        return "near_clean_partial"
+    return "missed"
+
+
+def _trajectory_quality(strict_outcome: str, max_unintended: float) -> str:
+    if strict_outcome == "clean_low_unintended":
+        return "gold_demo_candidate"
+    if strict_outcome == "clean_high_unintended" and max_unintended < 0.80:
+        return "weak_demo_candidate"
+    return "not_demo_candidate"
+
+
+def _nearby_keys(target_key: int) -> tuple[int, ...]:
+    return tuple(key for key in range(max(0, target_key - 2), min(87, target_key + 2) + 1))
 
 
 def _finger_from_contact_pair(pair: tuple[str, str]) -> str:

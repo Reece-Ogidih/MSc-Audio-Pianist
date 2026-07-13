@@ -17,6 +17,7 @@ class NoteEvent:
     start: float
     duration: float
     velocity: int = 80
+    fingering: int | None = None
 
 
 def write_monophonic_midi(
@@ -46,6 +47,10 @@ def write_monophonic_midi(
             raise ValueError("Note events must be monophonic and non-overlapping.")
         if not 0 <= event.velocity <= 127:
             raise ValueError(f"Velocity must be in [0, 127], got {event.velocity}.")
+        if event.fingering is not None and not 0 <= event.fingering <= 9:
+            raise ValueError(
+                f"Fingering labels must be in [0, 9], got {event.fingering}."
+            )
 
         end = event.start + event.duration
         seq.notes.add(
@@ -53,7 +58,7 @@ def write_monophonic_midi(
             start_time=float(event.start),
             end_time=float(end),
             velocity=int(event.velocity),
-            part=0,
+            part=0 if event.fingering is None else int(event.fingering),
         )
         previous_end = end
         total_time = max(total_time, end)

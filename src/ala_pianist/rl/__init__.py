@@ -1,5 +1,6 @@
 """Gymnasium/SB3 adapters for ALA Pianist."""
 
+from ala_pianist.rl.general_one_hand_env import GeneralOneHandGoalEnv, GeneralRewardConfig
 from ala_pianist.rl.keyset_env import KEYSET_MIDI, KeysetPianoGymEnv, make_keyset_observation
 from ala_pianist.rl.residual_env import (
     C_SHARP_5_DIRTY_BASE_ACTION,
@@ -18,6 +19,8 @@ __all__ = [
     "C_SHARP_5_DIRTY_BASE_ACTION",
     "D5_DIRTY_BASE_ACTION",
     "KEYSET_MIDI",
+    "GeneralOneHandGoalEnv",
+    "GeneralRewardConfig",
     "KeysetPianoGymEnv",
     "ResidualSingleNoteEnv",
     "get_dirty_base_action",

@@ -46,6 +46,19 @@ def test_curriculum_modes_are_deterministic():
     assert assign_right_hand_fingering(75, 69, 75) == 4
 
 
+def test_curriculum_modes_respect_configured_range():
+    for mode in ("repeated_notes", "two_note_transitions"):
+        events = generate_curriculum_events(
+            mode=mode,
+            midi_min=73,
+            midi_max=75,
+            seed=5,
+            clip_index=4,
+        )
+        assert events
+        assert all(73 <= event.pitch <= 75 for event in events)
+
+
 def test_general_one_hand_env_reset_and_random_step(tmp_path):
     env = GeneralOneHandGoalEnv(
         generated_midi_dir=tmp_path,
@@ -66,6 +79,8 @@ def test_general_one_hand_env_reset_and_random_step(tmp_path):
     assert env.observation_space.contains(obs)
     assert info["lookahead"] == 1
     assert info["sustain_state"] == 0.0
+    assert info["sampled_midi_pitch"] in (73, 74, 75)
+    assert info["sampled_midi_pitch"] - 21 in info["target_keys"]
     assert info["trajectory_quality"] in {
         "gold_demo_candidate",
         "weak_demo_candidate",
@@ -81,6 +96,48 @@ def test_general_one_hand_env_reset_and_random_step(tmp_path):
     assert "reward_components" in info
     assert "target_key_state" in info["reward_components"]
     assert "max_unintended_key_state" in info["reward_components"]
+
+
+def test_single_note_curriculum_cycles_across_resets(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_min=73,
+        midi_max=75,
+        seed=11,
+        lookahead=1,
+        horizon_steps=1,
+    )
+
+    sampled = []
+    target_keys = []
+    for index in range(6):
+        _, info = env.reset(seed=11 if index == 0 else None)
+        sampled.append(info["sampled_midi_pitch"])
+        target_keys.extend(info["target_keys"])
+        assert info["sampled_midi_pitch"] - 21 in info["target_keys"]
+        assert info["native_goal_shape"] == (178,)
+
+    assert set(sampled) == {73, 74, 75}
+    assert set(target_keys) == {52, 53, 54}
+
+
+def test_curriculum_cycle_is_deterministic_with_seed(tmp_path):
+    kwargs = dict(
+        curriculum="single_notes",
+        midi_min=73,
+        midi_max=75,
+        seed=13,
+        lookahead=1,
+        horizon_steps=1,
+    )
+    env_a = GeneralOneHandGoalEnv(generated_midi_dir=tmp_path / "a", **kwargs)
+    env_b = GeneralOneHandGoalEnv(generated_midi_dir=tmp_path / "b", **kwargs)
+
+    seq_a = [env_a.reset(seed=13 if i == 0 else None)[1]["sampled_midi_pitch"] for i in range(6)]
+    seq_b = [env_b.reset(seed=13 if i == 0 else None)[1]["sampled_midi_pitch"] for i in range(6)]
+
+    assert seq_a == seq_b == [73, 74, 75, 73, 74, 75]
 
 
 def test_general_one_hand_env_lookahead_changes_shape(tmp_path):

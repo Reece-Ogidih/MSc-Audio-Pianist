@@ -65,34 +65,18 @@ class GeneralOneHandGoalEnv(gym.Env):
         self.note_count = int(note_count)
         self.reward_config = reward_config or GeneralRewardConfig()
         self.use_native_fingering_reward = bool(use_native_fingering_reward)
+        self._generated_midi_dir = Path(generated_midi_dir)
+        self._regenerate_curriculum_on_reset = midi_path is None
+        self._reset_count = 0
+        self._last_reset_seed: int | None = None
+        self._generated_env_cache: dict[int, tuple[Path, CurriculumClip, Any, Any]] = {}
 
         self.curriculum_clip: CurriculumClip | None = None
         if midi_path is None:
-            generated_midi_dir = Path(generated_midi_dir)
-            midi_path = generated_midi_dir / (
-                f"{self.curriculum}_{self.midi_min}_{self.midi_max}_"
-                f"seed{self.seed_value}_clip{self.clip_index}.mid"
-            )
-            self.curriculum_clip = write_curriculum_midi(
-                midi_path,
-                mode=self.curriculum,
-                midi_min=self.midi_min,
-                midi_max=self.midi_max,
-                seed=self.seed_value,
-                clip_index=self.clip_index,
-                note_count=self.note_count,
-            )
-        self.midi_path = Path(midi_path)
-
-        midi = midi_file.MidiFile.from_file(self.midi_path)
-        self.task = PianoWithOneShadowHand(
-            midi=midi,
-            hand_side=HandSide.RIGHT,
-            disable_fingering_reward=not self.use_native_fingering_reward,
-            n_steps_lookahead=self.lookahead,
-            trim_silence=False,
-        )
-        self.env = composer.Environment(self.task, strip_singleton_obs_buffer_dim=True)
+            self._select_generated_env(self.clip_index)
+        else:
+            self.midi_path = Path(midi_path)
+            self._build_composer_env(self.midi_path)
         self._native_action_spec = self.env.action_spec()
         if self._native_action_spec.shape != (23,):
             raise ValueError(
@@ -138,6 +122,15 @@ class GeneralOneHandGoalEnv(gym.Env):
         del options
         self._step_count = 0
         self._previous_normalized_action = np.zeros(22, dtype=np.float32)
+        if self._regenerate_curriculum_on_reset:
+            if seed is not None and seed != self._last_reset_seed:
+                self.seed_value = int(seed)
+                self._reset_count = 0
+                self._last_reset_seed = int(seed)
+                self._generated_env_cache.clear()
+            clip_index = self.clip_index + self._reset_count
+            self._select_generated_env(clip_index)
+            self._reset_count += 1
         self._last_timestep = self.env.reset()
         _, observation = self._flatten_observation(self._last_timestep)
         return observation, self._info(
@@ -342,6 +335,9 @@ class GeneralOneHandGoalEnv(gym.Env):
         else:
             quality = "not_demo_candidate"
         return {
+            "sampled_midi_pitch": self._sampled_midi_pitch(),
+            "curriculum_pitches": tuple(self.curriculum_clip.pitches if self.curriculum_clip else ()),
+            "curriculum_key_indices": tuple(self.curriculum_clip.key_indices if self.curriculum_clip else ()),
             "target_keys": target_keys,
             "pressed_keys": pressed_keys,
             "target_key_state": float(target_state),
@@ -355,3 +351,57 @@ class GeneralOneHandGoalEnv(gym.Env):
             "sustain_state": float(self.task.piano.sustain_state[0]),
             "trajectory_quality": quality,
         }
+
+    def _write_generated_clip(self, clip_index: int) -> CurriculumClip:
+        cache_key = self._curriculum_cache_key(clip_index)
+        path = self._generated_midi_dir / (
+            f"{self.curriculum}_{self.midi_min}_{self.midi_max}_"
+            f"seed{self.seed_value}_clip{int(cache_key)}.mid"
+        )
+        return write_curriculum_midi(
+            path,
+            mode=self.curriculum,
+            midi_min=self.midi_min,
+            midi_max=self.midi_max,
+            seed=self.seed_value,
+            clip_index=int(cache_key),
+            note_count=self.note_count,
+        )
+
+    def _build_composer_env(self, midi_path: str | Path) -> None:
+        midi = midi_file.MidiFile.from_file(Path(midi_path))
+        self.task = PianoWithOneShadowHand(
+            midi=midi,
+            hand_side=HandSide.RIGHT,
+            disable_fingering_reward=not self.use_native_fingering_reward,
+            n_steps_lookahead=self.lookahead,
+            trim_silence=False,
+        )
+        self.env = composer.Environment(self.task, strip_singleton_obs_buffer_dim=True)
+
+    def _select_generated_env(self, clip_index: int) -> None:
+        cache_key = self._curriculum_cache_key(clip_index)
+        if cache_key not in self._generated_env_cache:
+            clip = self._write_generated_clip(cache_key)
+            midi = midi_file.MidiFile.from_file(clip.midi_path)
+            task = PianoWithOneShadowHand(
+                midi=midi,
+                hand_side=HandSide.RIGHT,
+                disable_fingering_reward=not self.use_native_fingering_reward,
+                n_steps_lookahead=self.lookahead,
+                trim_silence=False,
+            )
+            env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
+            self._generated_env_cache[cache_key] = (clip.midi_path, clip, task, env)
+        self.midi_path, self.curriculum_clip, self.task, self.env = self._generated_env_cache[cache_key]
+
+    def _curriculum_cache_key(self, clip_index: int) -> int:
+        if self.curriculum in {"single_notes", "repeated_notes", "two_note_transitions"}:
+            cycle_length = self.midi_max - self.midi_min + 1
+            return int(clip_index) % max(1, cycle_length)
+        return int(clip_index)
+
+    def _sampled_midi_pitch(self) -> int | None:
+        if self.curriculum_clip is None or not self.curriculum_clip.pitches:
+            return None
+        return int(self.curriculum_clip.pitches[0])

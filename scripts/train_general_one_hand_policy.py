@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 from stable_baselines3 import SAC
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
 
@@ -107,6 +108,22 @@ def reward_config_from_profile(profile: str, override: str | None = None) -> Gen
             high_unintended_weight=1.0,
             high_unintended_threshold=0.75,
         )
+    if profile in {"cleanup", "gated_cleanliness"}:
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.25,
+            wrong_pressed_weight=0.25,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.5,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=3.0,
+            gated_wrong_pressed_weight=2.0,
+            nearby_wrong_key_weight=2.0,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -179,7 +196,11 @@ def main() -> None:
     parser.add_argument("--midi-pitches", default=None)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--reward-config", default=None)
-    parser.add_argument("--reward-profile", default="default", choices=["default", "press_bonus"])
+    parser.add_argument(
+        "--reward-profile",
+        default="default",
+        choices=["default", "press_bonus", "cleanup", "gated_cleanliness"],
+    )
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--horizon-steps", type=int, default=64)
     parser.add_argument("--action-mode", default="direct", choices=["direct", "hold", "ramp_hold"])
@@ -189,6 +210,7 @@ def main() -> None:
     parser.add_argument("--resume-model-path", default=None)
     parser.add_argument("--reset-num-timesteps", default="false")
     parser.add_argument("--stage-name", default=None)
+    parser.add_argument("--checkpoint-freq", type=int, default=0)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -232,10 +254,26 @@ def main() -> None:
         return
 
     model = load_or_create_model(args, env)
+    callbacks = []
+    if args.checkpoint_freq > 0:
+        checkpoint_dir = output_dir / "checkpoints" / (
+            f"{args.stage_name or 'general'}_{args.action_mode}x{args.action_repeat}_{args.reward_profile}"
+        )
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=args.checkpoint_freq,
+                save_path=str(checkpoint_dir),
+                name_prefix="checkpoint",
+                save_replay_buffer=True,
+                save_vecnormalize=True,
+            )
+        )
     start = time.time()
     model.learn(
         total_timesteps=args.timesteps,
         reset_num_timesteps=parse_bool(args.reset_num_timesteps),
+        callback=callbacks or None,
     )
     runtime_seconds = time.time() - start
 
@@ -264,6 +302,7 @@ def main() -> None:
         "action_repeat": args.action_repeat,
         "ramp_steps": args.ramp_steps,
         "reward_profile": args.reward_profile,
+        "checkpoint_freq": args.checkpoint_freq,
         "resume_model_path": args.resume_model_path,
         "reset_num_timesteps": parse_bool(args.reset_num_timesteps),
         "stage_name": args.stage_name,

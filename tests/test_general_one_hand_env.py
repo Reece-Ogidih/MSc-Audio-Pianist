@@ -268,3 +268,24 @@ def test_press_bonus_reward_component_exists(tmp_path):
 
     assert "target_activation" in info["reward_components"]
     assert "high_unintended" in info["reward_components"]
+
+
+def test_cleanup_reward_components_are_logged(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=1,
+        reward_config=GeneralRewardConfig(
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=3.0,
+            gated_wrong_pressed_weight=2.0,
+            nearby_wrong_key_weight=2.0,
+        ),
+    )
+    env.reset()
+    _, _, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+
+    assert "cleanup_gate" in info["reward_components"]
+    assert "nearby_wrong_key_state" in info["reward_components"]

@@ -184,6 +184,22 @@ def reward_config_from_profile(profile: str) -> GeneralRewardConfig:
             high_unintended_weight=1.0,
             high_unintended_threshold=0.75,
         )
+    if profile in {"cleanup", "gated_cleanliness"}:
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.25,
+            wrong_pressed_weight=0.25,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.5,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=3.0,
+            gated_wrong_pressed_weight=2.0,
+            nearby_wrong_key_weight=2.0,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -221,7 +237,11 @@ def main() -> None:
     parser.add_argument("--action-mode", default="direct", choices=["direct", "hold", "ramp_hold"])
     parser.add_argument("--action-repeat", type=int, default=1)
     parser.add_argument("--ramp-steps", type=int, default=1)
-    parser.add_argument("--reward-profile", default="default", choices=["default", "press_bonus"])
+    parser.add_argument(
+        "--reward-profile",
+        default="default",
+        choices=["default", "press_bonus", "cleanup", "gated_cleanliness"],
+    )
     parser.add_argument("--sequence", action="append", choices=sorted(SEQUENCES), default=None)
     parser.add_argument("--dsharp-residual-model-path", default=str(D_SHARP_MODEL))
     parser.add_argument("--d5-residual-model-path", default=str(D5_MODEL))

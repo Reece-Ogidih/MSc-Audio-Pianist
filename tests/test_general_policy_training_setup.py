@@ -45,6 +45,17 @@ def test_reward_profile_press_bonus_exists():
     assert config.high_unintended_weight > 0.0
 
 
+def test_reward_profile_cleanup_exists_and_is_gated():
+    module = _training_script_module()
+    config = module.reward_config_from_profile("cleanup")
+
+    assert config.cleanup_gate_threshold < 1.0
+    assert config.gated_unintended_weight > 0.0
+    assert config.gated_wrong_pressed_weight > 0.0
+    assert config.nearby_wrong_key_weight > 0.0
+    assert config.wrong_travel_weight < config.gated_unintended_weight
+
+
 def test_general_policy_eval_fields_without_trained_model(tmp_path):
     env = GeneralOneHandGoalEnv(
         generated_midi_dir=tmp_path,

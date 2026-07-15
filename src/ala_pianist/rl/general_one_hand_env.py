@@ -33,6 +33,10 @@ class GeneralRewardConfig:
     target_activation_threshold: float = 0.9
     high_unintended_weight: float = 0.0
     high_unintended_threshold: float = 0.75
+    cleanup_gate_threshold: float = 1.1
+    gated_unintended_weight: float = 0.0
+    gated_wrong_pressed_weight: float = 0.0
+    nearby_wrong_key_weight: float = 0.0
 
 
 class GeneralOneHandGoalEnv(gym.Env):
@@ -325,6 +329,8 @@ class GeneralOneHandGoalEnv(gym.Env):
         smoothness = float(np.mean(np.square(normalized_action - self._previous_normalized_action)))
         native = 0.0 if native_reward is None else float(native_reward)
         fingering = self._fingering_score(target_keys)
+        cleanup_gate = 1.0 if target_state >= self.reward_config.cleanup_gate_threshold else 0.0
+        nearby_wrong_key_state = self._nearby_wrong_key_state(target_keys, states)
         return {
             "target_key_state": target_state,
             "max_unintended_key_state": max_unintended,
@@ -335,6 +341,8 @@ class GeneralOneHandGoalEnv(gym.Env):
             "fingering_score": fingering,
             "target_activation": 1.0 if target_state >= self.reward_config.target_activation_threshold else 0.0,
             "high_unintended": max(0.0, max_unintended - self.reward_config.high_unintended_threshold),
+            "cleanup_gate": cleanup_gate,
+            "nearby_wrong_key_state": nearby_wrong_key_state,
         }
 
     def _combine_reward_components(self, components: dict[str, float]) -> float:
@@ -349,6 +357,9 @@ class GeneralOneHandGoalEnv(gym.Env):
             + cfg.fingering_weight * components["fingering_score"]
             + cfg.target_activation_bonus * components["target_activation"]
             - cfg.high_unintended_weight * components["high_unintended"]
+            - cfg.gated_unintended_weight * components["cleanup_gate"] * components["max_unintended_key_state"]
+            - cfg.gated_wrong_pressed_weight * components["cleanup_gate"] * components["wrong_pressed_key_count"]
+            - cfg.nearby_wrong_key_weight * components["cleanup_gate"] * components["nearby_wrong_key_state"]
         )
 
     def _fingering_score(self, target_keys: list[int]) -> float:
@@ -360,6 +371,16 @@ class GeneralOneHandGoalEnv(gym.Env):
             if event.fingering is not None
         }
         return 1.0 if any(key in key_to_finger for key in target_keys) else 0.0
+
+    @staticmethod
+    def _nearby_wrong_key_state(target_keys: list[int], states: np.ndarray) -> float:
+        tracked_pairs = {52: 54, 54: 52}
+        values = []
+        for target_key in target_keys:
+            wrong_key = tracked_pairs.get(int(target_key))
+            if wrong_key is not None and 0 <= wrong_key < states.size:
+                values.append(float(states[wrong_key]))
+        return max(values, default=0.0)
 
     def _info(
         self,

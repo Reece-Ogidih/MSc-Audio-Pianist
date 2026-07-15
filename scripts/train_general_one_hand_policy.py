@@ -90,6 +90,65 @@ def parse_reward_config(raw: str | None) -> GeneralRewardConfig:
     return GeneralRewardConfig(**payload)
 
 
+def parse_midi_pitches(raw: str | None) -> tuple[int, ...] | None:
+    if raw is None or raw == "":
+        return None
+    pitches = tuple(int(part.strip()) for part in raw.split(",") if part.strip())
+    if not pitches:
+        raise ValueError("--midi-pitches must include at least one MIDI pitch.")
+    if len(set(pitches)) != len(pitches):
+        raise ValueError("--midi-pitches must not contain duplicates.")
+    return pitches
+
+
+def parse_bool(raw: str | bool) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "y"}:
+        return True
+    if value in {"0", "false", "no", "n"}:
+        return False
+    raise ValueError(f"Cannot parse boolean value {raw!r}.")
+
+
+def load_or_create_model(args, env):
+    if args.resume_model_path is None:
+        return SAC(
+            "MlpPolicy",
+            env,
+            seed=args.seed,
+            verbose=0,
+            learning_rate=3e-4,
+            buffer_size=max(5000, args.timesteps),
+            learning_starts=min(1000, max(100, args.timesteps // 5)),
+            batch_size=64,
+            gamma=0.95,
+            train_freq=1,
+            gradient_steps=1,
+        )
+    model = SAC.load(args.resume_model_path, env=env)
+    check_model_compatibility(model, env, lookahead=args.lookahead)
+    return model
+
+
+def check_model_compatibility(model, env, *, lookahead: int) -> None:
+    if model.action_space.shape != env.action_space.shape:
+        raise ValueError(
+            f"Resume model action shape {model.action_space.shape} does not match "
+            f"env action shape {env.action_space.shape}."
+        )
+    if model.observation_space.shape != env.observation_space.shape:
+        raise ValueError(
+            f"Resume model observation shape {model.observation_space.shape} does not match "
+            f"env observation shape {env.observation_space.shape}."
+        )
+    if tuple(env.native_goal_shape) != ((int(lookahead) + 1) * 89,):
+        raise ValueError(
+            f"Env native goal shape {env.native_goal_shape} is incompatible with lookahead {lookahead}."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timesteps", type=int, default=5000)
@@ -97,21 +156,29 @@ def main() -> None:
     parser.add_argument("--lookahead", type=int, default=1)
     parser.add_argument("--midi-min", type=int, default=73)
     parser.add_argument("--midi-max", type=int, default=75)
+    parser.add_argument("--midi-pitches", default=None)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--reward-config", default=None)
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--horizon-steps", type=int, default=64)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--resume-model-path", default=None)
+    parser.add_argument("--reset-num-timesteps", default="false")
+    parser.add_argument("--stage-name", default=None)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     reward_config = parse_reward_config(args.reward_config)
+    midi_pitches = parse_midi_pitches(args.midi_pitches)
+    midi_min = min(midi_pitches) if midi_pitches is not None else args.midi_min
+    midi_max = max(midi_pitches) if midi_pitches is not None else args.midi_max
     env_kwargs = {
         "generated_midi_dir": str(output_dir / "generated_midi"),
         "curriculum": args.curriculum,
-        "midi_min": args.midi_min,
-        "midi_max": args.midi_max,
+        "midi_min": midi_min,
+        "midi_max": midi_max,
+        "midi_pitches": midi_pitches,
         "seed": args.seed,
         "note_count": 4,
         "lookahead": args.lookahead,
@@ -128,28 +195,23 @@ def main() -> None:
     print(f"lookahead={env.lookahead}")
     print(f"curriculum_clip_pitches={env.curriculum_clip.pitches if env.curriculum_clip else ()}")
     print(f"reset_target_keys={info['target_keys']}")
+    print(f"midi_pitches={midi_pitches if midi_pitches is not None else tuple(range(midi_min, midi_max + 1))}")
+    print(f"resume_model_path={args.resume_model_path}")
     if args.dry_run:
         return
 
-    model = SAC(
-        "MlpPolicy",
-        env,
-        seed=args.seed,
-        verbose=0,
-        learning_rate=3e-4,
-        buffer_size=max(5000, args.timesteps),
-        learning_starts=min(1000, max(100, args.timesteps // 5)),
-        batch_size=64,
-        gamma=0.95,
-        train_freq=1,
-        gradient_steps=1,
-    )
+    model = load_or_create_model(args, env)
     start = time.time()
-    model.learn(total_timesteps=args.timesteps)
+    model.learn(
+        total_timesteps=args.timesteps,
+        reset_num_timesteps=parse_bool(args.reset_num_timesteps),
+    )
     runtime_seconds = time.time() - start
 
+    pitch_part = "-".join(str(pitch) for pitch in (midi_pitches or tuple(range(midi_min, midi_max + 1))))
+    stage_prefix = f"{args.stage_name}_" if args.stage_name else ""
     run_name = (
-        f"general_one_hand_sac_{args.curriculum}_midi{args.midi_min}_{args.midi_max}_"
+        f"{stage_prefix}general_one_hand_sac_{args.curriculum}_pitches{pitch_part}_"
         f"lookahead{args.lookahead}_seed{args.seed}_{args.timesteps}"
     )
     model_path = output_dir / run_name
@@ -162,9 +224,18 @@ def main() -> None:
         "timesteps": args.timesteps,
         "seed": args.seed,
         "lookahead": args.lookahead,
-        "midi_min": args.midi_min,
-        "midi_max": args.midi_max,
+        "midi_min": midi_min,
+        "midi_max": midi_max,
+        "midi_pitches": midi_pitches,
         "curriculum": args.curriculum,
+        "resume_model_path": args.resume_model_path,
+        "reset_num_timesteps": parse_bool(args.reset_num_timesteps),
+        "stage_name": args.stage_name,
+        "compatibility_checks": {
+            "action_space_shape": env.action_space.shape,
+            "observation_space_shape": env.observation_space.shape,
+            "lookahead": args.lookahead,
+        },
         "reward_config": reward_config.__dict__,
         "native_goal_shape": tuple(env.native_goal_shape),
         "observation_shape": env.observation_space.shape,

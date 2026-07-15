@@ -44,6 +44,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         curriculum: str = "single_notes",
         midi_min: int = 73,
         midi_max: int = 75,
+        midi_pitches: tuple[int, ...] | list[int] | None = None,
         seed: int = 0,
         clip_index: int = 0,
         note_count: int = 4,
@@ -59,6 +60,10 @@ class GeneralOneHandGoalEnv(gym.Env):
         self.horizon_steps = int(horizon_steps)
         self.midi_min = int(midi_min)
         self.midi_max = int(midi_max)
+        self.midi_pitches = self._normalise_midi_pitches(midi_pitches)
+        if self.midi_pitches is not None:
+            self.midi_min = min(self.midi_pitches)
+            self.midi_max = max(self.midi_pitches)
         self.curriculum = str(curriculum)
         self.seed_value = int(seed)
         self.clip_index = int(clip_index)
@@ -356,6 +361,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         cache_key = self._curriculum_cache_key(clip_index)
         path = self._generated_midi_dir / (
             f"{self.curriculum}_{self.midi_min}_{self.midi_max}_"
+            f"{self._pitch_suffix()}_"
             f"seed{self.seed_value}_clip{int(cache_key)}.mid"
         )
         return write_curriculum_midi(
@@ -363,6 +369,7 @@ class GeneralOneHandGoalEnv(gym.Env):
             mode=self.curriculum,
             midi_min=self.midi_min,
             midi_max=self.midi_max,
+            midi_pitches=self.midi_pitches,
             seed=self.seed_value,
             clip_index=int(cache_key),
             note_count=self.note_count,
@@ -397,7 +404,7 @@ class GeneralOneHandGoalEnv(gym.Env):
 
     def _curriculum_cache_key(self, clip_index: int) -> int:
         if self.curriculum in {"single_notes", "repeated_notes", "two_note_transitions"}:
-            cycle_length = self.midi_max - self.midi_min + 1
+            cycle_length = len(self._available_pitches())
             return int(clip_index) % max(1, cycle_length)
         return int(clip_index)
 
@@ -405,3 +412,26 @@ class GeneralOneHandGoalEnv(gym.Env):
         if self.curriculum_clip is None or not self.curriculum_clip.pitches:
             return None
         return int(self.curriculum_clip.pitches[0])
+
+    def _available_pitches(self) -> tuple[int, ...]:
+        if self.midi_pitches is not None:
+            return self.midi_pitches
+        return tuple(range(self.midi_min, self.midi_max + 1))
+
+    def _pitch_suffix(self) -> str:
+        if self.midi_pitches is None:
+            return "range"
+        return "pitches" + "-".join(str(pitch) for pitch in self.midi_pitches)
+
+    @staticmethod
+    def _normalise_midi_pitches(
+        midi_pitches: tuple[int, ...] | list[int] | None,
+    ) -> tuple[int, ...] | None:
+        if midi_pitches is None:
+            return None
+        pitches = tuple(int(pitch) for pitch in midi_pitches)
+        if not pitches:
+            raise ValueError("midi_pitches must contain at least one pitch.")
+        if len(set(pitches)) != len(pitches):
+            raise ValueError("midi_pitches must not contain duplicates.")
+        return pitches

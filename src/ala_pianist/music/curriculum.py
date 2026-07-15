@@ -58,6 +58,7 @@ def generate_curriculum_events(
     mode: str,
     midi_min: int,
     midi_max: int,
+    midi_pitches: tuple[int, ...] | list[int] | None = None,
     seed: int = 0,
     clip_index: int = 0,
     note_count: int = 4,
@@ -69,11 +70,11 @@ def generate_curriculum_events(
 
     if mode not in CURRICULUM_MODES:
         raise ValueError(f"Unknown curriculum mode {mode!r}.")
-    if midi_max < midi_min:
-        raise ValueError("midi_max must be greater than or equal to midi_min.")
-    pitches = np.arange(midi_min, midi_max + 1, dtype=int)
-    if pitches.size == 0:
-        raise ValueError("At least one pitch is required.")
+    pitches = _pitch_array(
+        midi_min=midi_min,
+        midi_max=midi_max,
+        midi_pitches=midi_pitches,
+    )
     rng = np.random.default_rng(int(seed) + 9973 * int(clip_index))
     note_count = max(1, int(note_count))
 
@@ -89,7 +90,10 @@ def generate_curriculum_events(
         else:
             offsets = np.asarray([-2, -1, 1, 2], dtype=int)
             candidates = [first + int(offset) for offset in offsets]
-            candidates = [pitch for pitch in candidates if midi_min <= pitch <= midi_max]
+            allowed = set(int(pitch) for pitch in pitches)
+            candidates = [pitch for pitch in candidates if pitch in allowed]
+            if not candidates:
+                candidates = [int(pitch) for pitch in pitches if int(pitch) != first]
             second = int(candidates[clip_index % len(candidates)])
         selected = [first, second]
     else:
@@ -117,6 +121,7 @@ def write_curriculum_midi(
     mode: str,
     midi_min: int,
     midi_max: int,
+    midi_pitches: tuple[int, ...] | list[int] | None = None,
     seed: int = 0,
     clip_index: int = 0,
     note_count: int = 4,
@@ -127,6 +132,7 @@ def write_curriculum_midi(
         mode=mode,
         midi_min=midi_min,
         midi_max=midi_max,
+        midi_pitches=midi_pitches,
         seed=seed,
         clip_index=clip_index,
         note_count=note_count,
@@ -143,3 +149,22 @@ def write_curriculum_midi(
         midi_min=int(midi_min),
         midi_max=int(midi_max),
     )
+
+
+def _pitch_array(
+    *,
+    midi_min: int,
+    midi_max: int,
+    midi_pitches: tuple[int, ...] | list[int] | None,
+) -> np.ndarray:
+    if midi_pitches is None:
+        if midi_max < midi_min:
+            raise ValueError("midi_max must be greater than or equal to midi_min.")
+        pitches = np.arange(midi_min, midi_max + 1, dtype=int)
+    else:
+        pitches = np.asarray(tuple(int(pitch) for pitch in midi_pitches), dtype=int)
+        if np.unique(pitches).size != pitches.size:
+            raise ValueError("Explicit MIDI pitches must be unique.")
+    if pitches.size == 0:
+        raise ValueError("At least one pitch is required.")
+    return pitches

@@ -122,6 +122,27 @@ def test_single_note_curriculum_cycles_across_resets(tmp_path):
     assert set(target_keys) == {52, 53, 54}
 
 
+def test_explicit_pitch_curriculum_cycles_only_requested_notes(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_min=73,
+        midi_max=75,
+        midi_pitches=(73, 75),
+        seed=11,
+        lookahead=1,
+        horizon_steps=1,
+    )
+
+    sampled = []
+    for index in range(6):
+        _, info = env.reset(seed=11 if index == 0 else None)
+        sampled.append(info["sampled_midi_pitch"])
+        assert info["sampled_midi_pitch"] - 21 in info["target_keys"]
+
+    assert sampled == [73, 75, 73, 75, 73, 75]
+
+
 def test_curriculum_cycle_is_deterministic_with_seed(tmp_path):
     kwargs = dict(
         curriculum="single_notes",

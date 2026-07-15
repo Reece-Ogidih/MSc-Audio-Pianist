@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--lookahead", type=int, default=1)
     parser.add_argument("--midi-min", type=int, default=73)
     parser.add_argument("--midi-max", type=int, default=75)
+    parser.add_argument("--midi-pitches", default=None)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--num-resets", type=int, default=100)
     parser.add_argument("--seed", type=int, default=19)
@@ -23,11 +24,15 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    midi_pitches = _parse_midi_pitches(args.midi_pitches)
+    midi_min = min(midi_pitches) if midi_pitches is not None else args.midi_min
+    midi_max = max(midi_pitches) if midi_pitches is not None else args.midi_max
     env = GeneralOneHandGoalEnv(
         generated_midi_dir=output_dir / "generated_midi",
         curriculum=args.curriculum,
-        midi_min=args.midi_min,
-        midi_max=args.midi_max,
+        midi_min=midi_min,
+        midi_max=midi_max,
+        midi_pitches=midi_pitches,
         seed=args.seed,
         lookahead=args.lookahead,
         horizon_steps=4,
@@ -60,8 +65,9 @@ def main() -> None:
 
     summary = {
         "curriculum": args.curriculum,
-        "midi_min": args.midi_min,
-        "midi_max": args.midi_max,
+        "midi_min": midi_min,
+        "midi_max": midi_max,
+        "midi_pitches": midi_pitches,
         "lookahead": args.lookahead,
         "num_resets": args.num_resets,
         "pitch_counts": {str(key): value for key, value in sorted(pitch_counts.items())},
@@ -76,7 +82,8 @@ def main() -> None:
 
     print(f"summary_path={summary_path}")
     print(f"curriculum={args.curriculum}")
-    print(f"midi_range={args.midi_min}-{args.midi_max}")
+    print(f"midi_range={midi_min}-{midi_max}")
+    print(f"midi_pitches={midi_pitches}")
     print(f"num_resets={args.num_resets}")
     print(f"native_goal_shape={tuple(env.native_goal_shape)}")
     print(f"pitch_counts={dict(sorted(pitch_counts.items()))}")
@@ -84,6 +91,12 @@ def main() -> None:
     print(f"mismatch_count={len(mismatches)}")
     if mismatches:
         print(f"first_mismatch={mismatches[0]}")
+
+
+def _parse_midi_pitches(raw: str | None) -> tuple[int, ...] | None:
+    if raw is None or raw == "":
+        return None
+    return tuple(int(part.strip()) for part in raw.split(",") if part.strip())
 
 
 if __name__ == "__main__":

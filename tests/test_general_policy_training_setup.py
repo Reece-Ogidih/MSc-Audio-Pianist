@@ -36,6 +36,15 @@ def test_training_arg_helpers_parse_midi_pitches_and_booleans():
     assert module.parse_bool("true") is True
 
 
+def test_reward_profile_press_bonus_exists():
+    module = _training_script_module()
+    config = module.reward_config_from_profile("press_bonus")
+
+    assert config.target_activation_bonus > 0.0
+    assert config.target_activation_threshold == 0.9
+    assert config.high_unintended_weight > 0.0
+
+
 def test_general_policy_eval_fields_without_trained_model(tmp_path):
     env = GeneralOneHandGoalEnv(
         generated_midi_dir=tmp_path,

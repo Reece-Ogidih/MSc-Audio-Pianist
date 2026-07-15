@@ -29,6 +29,10 @@ class GeneralRewardConfig:
     smoothness_weight: float = 0.001
     fingering_weight: float = 0.0
     native_reward_weight: float = 0.0
+    target_activation_bonus: float = 0.0
+    target_activation_threshold: float = 0.9
+    high_unintended_weight: float = 0.0
+    high_unintended_threshold: float = 0.75
 
 
 class GeneralOneHandGoalEnv(gym.Env):
@@ -52,6 +56,9 @@ class GeneralOneHandGoalEnv(gym.Env):
         horizon_steps: int = 64,
         reward_config: GeneralRewardConfig | None = None,
         use_native_fingering_reward: bool = False,
+        action_mode: str = "direct",
+        action_repeat: int = 1,
+        ramp_steps: int = 1,
     ):
         super().__init__()
         if lookahead < 1:
@@ -70,6 +77,9 @@ class GeneralOneHandGoalEnv(gym.Env):
         self.note_count = int(note_count)
         self.reward_config = reward_config or GeneralRewardConfig()
         self.use_native_fingering_reward = bool(use_native_fingering_reward)
+        self.action_mode = self._validate_action_mode(action_mode)
+        self.action_repeat = self._validate_positive_int(action_repeat, "action_repeat")
+        self.ramp_steps = self._validate_positive_int(ramp_steps, "ramp_steps")
         self._generated_midi_dir = Path(generated_midi_dir)
         self._regenerate_curriculum_on_reset = midi_path is None
         self._reset_count = 0
@@ -93,6 +103,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._action_names = tuple(str(actuator.name) for actuator in self.task._hand.actuators)
         self._step_count = 0
         self._previous_normalized_action = np.zeros(22, dtype=np.float32)
+        self._previous_policy_action = np.zeros(22, dtype=np.float32)
 
         self.action_space = spaces.Box(
             low=-np.ones(22, dtype=np.float32),
@@ -127,6 +138,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         del options
         self._step_count = 0
         self._previous_normalized_action = np.zeros(22, dtype=np.float32)
+        self._previous_policy_action = np.zeros(22, dtype=np.float32)
         if self._regenerate_curriculum_on_reset:
             if seed is not None and seed != self._last_reset_seed:
                 self.seed_value = int(seed)
@@ -147,26 +159,48 @@ class GeneralOneHandGoalEnv(gym.Env):
         )
 
     def step(self, action):
-        normalized_action = np.asarray(action, dtype=np.float32)
-        normalized_action = np.clip(normalized_action, self.action_space.low, self.action_space.high)
-        native_action22 = self.rescale_action(normalized_action)
-        native_action23 = np.concatenate(
-            [native_action22, np.asarray([0.0], dtype=self._native_action_spec.dtype)]
-        )
-        self._last_timestep = self.env.step(native_action23)
-        self._step_count += 1
+        policy_action = np.asarray(action, dtype=np.float32)
+        policy_action = np.clip(policy_action, self.action_space.low, self.action_space.high)
+        total_reward = 0.0
+        final_components = None
+        final_shaped_reward = 0.0
+        internal_steps = 0
+        for normalized_action in self._expanded_actions(policy_action):
+            native_action22 = self.rescale_action(normalized_action)
+            native_action23 = np.concatenate(
+                [native_action22, np.asarray([0.0], dtype=self._native_action_spec.dtype)]
+            )
+            self._last_timestep = self.env.step(native_action23)
+            self._step_count += 1
+            internal_steps += 1
 
-        components = self._reward_components(
-            normalized_action=normalized_action,
-            native_reward=self._last_timestep.reward,
-        )
-        shaped_reward = self._combine_reward_components(components)
-        self._previous_normalized_action = normalized_action.copy()
+            components = self._reward_components(
+                normalized_action=normalized_action,
+                native_reward=self._last_timestep.reward,
+            )
+            shaped_reward = self._combine_reward_components(components)
+            total_reward += shaped_reward
+            final_components = components
+            final_shaped_reward = shaped_reward
+            self._previous_normalized_action = normalized_action.copy()
+            if self._last_timestep.last() or self._step_count >= self.horizon_steps:
+                break
+        self._previous_policy_action = policy_action.copy()
         _, observation = self._flatten_observation(self._last_timestep)
         terminated = bool(self._last_timestep.last())
         truncated = self._step_count >= self.horizon_steps and not terminated
-        info = self._info(shaped_reward=shaped_reward, reward_components=components)
-        return observation, float(shaped_reward), terminated, truncated, info
+        if final_components is None:
+            final_components = self._reward_components(
+                normalized_action=policy_action,
+                native_reward=self._last_timestep.reward,
+            )
+        info = self._info(
+            shaped_reward=final_shaped_reward,
+            reward_components=final_components,
+            internal_steps=internal_steps,
+        )
+        info["aggregated_shaped_reward"] = float(total_reward)
+        return observation, float(total_reward), terminated, truncated, info
 
     def rescale_action(self, normalized_action) -> np.ndarray:
         """Map normalized `[-1, 1]` actions to native 22D RoboPianist bounds."""
@@ -299,6 +333,8 @@ class GeneralOneHandGoalEnv(gym.Env):
             "smoothness": smoothness,
             "native_reward": native,
             "fingering_score": fingering,
+            "target_activation": 1.0 if target_state >= self.reward_config.target_activation_threshold else 0.0,
+            "high_unintended": max(0.0, max_unintended - self.reward_config.high_unintended_threshold),
         }
 
     def _combine_reward_components(self, components: dict[str, float]) -> float:
@@ -311,6 +347,8 @@ class GeneralOneHandGoalEnv(gym.Env):
             - cfg.smoothness_weight * components["smoothness"]
             + cfg.native_reward_weight * components["native_reward"]
             + cfg.fingering_weight * components["fingering_score"]
+            + cfg.target_activation_bonus * components["target_activation"]
+            - cfg.high_unintended_weight * components["high_unintended"]
         )
 
     def _fingering_score(self, target_keys: list[int]) -> float:
@@ -328,6 +366,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         *,
         shaped_reward: float,
         reward_components: dict[str, float],
+        internal_steps: int = 0,
     ) -> dict[str, Any]:
         target_keys = tuple(self.current_target_keys())
         pressed_keys = tuple(self.current_pressed_keys())
@@ -351,11 +390,36 @@ class GeneralOneHandGoalEnv(gym.Env):
             "shaped_reward": float(shaped_reward),
             "reward_components": dict(reward_components),
             "action_space_mode": "normalized_minus_one_to_one",
+            "action_mode": self.action_mode,
+            "action_repeat": self.action_repeat,
+            "ramp_steps": self.ramp_steps,
+            "internal_steps": int(internal_steps),
             "native_goal_shape": tuple(self.native_goal_shape),
             "lookahead": self.lookahead,
             "sustain_state": float(self.task.piano.sustain_state[0]),
             "trajectory_quality": quality,
         }
+
+    def _expanded_actions(self, policy_action: np.ndarray) -> tuple[np.ndarray, ...]:
+        if self.action_mode == "direct":
+            return (policy_action,)
+        if self.action_mode == "hold":
+            return tuple(policy_action.copy() for _ in range(self.action_repeat))
+        if self.action_mode == "ramp_hold":
+            actions = []
+            ramp_count = min(self.ramp_steps, self.action_repeat)
+            for idx in range(ramp_count):
+                fraction = (idx + 1) / max(1, ramp_count)
+                actions.append(
+                    (
+                        self._previous_policy_action
+                        + fraction * (policy_action - self._previous_policy_action)
+                    ).astype(np.float32)
+                )
+            while len(actions) < self.action_repeat:
+                actions.append(policy_action.copy())
+            return tuple(actions)
+        raise RuntimeError(f"Unsupported action_mode {self.action_mode!r}.")
 
     def _write_generated_clip(self, clip_index: int) -> CurriculumClip:
         cache_key = self._curriculum_cache_key(clip_index)
@@ -435,3 +499,17 @@ class GeneralOneHandGoalEnv(gym.Env):
         if len(set(pitches)) != len(pitches):
             raise ValueError("midi_pitches must not contain duplicates.")
         return pitches
+
+    @staticmethod
+    def _validate_action_mode(action_mode: str) -> str:
+        action_mode = str(action_mode)
+        if action_mode not in {"direct", "hold", "ramp_hold"}:
+            raise ValueError("action_mode must be one of: direct, hold, ramp_hold.")
+        return action_mode
+
+    @staticmethod
+    def _validate_positive_int(value: int, name: str) -> int:
+        value = int(value)
+        if value < 1:
+            raise ValueError(f"{name} must be >= 1.")
+        return value

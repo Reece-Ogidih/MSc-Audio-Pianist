@@ -9,7 +9,7 @@ from stable_baselines3 import SAC
 from ala_pianist.controllers import HybridPipeline1Controller
 from ala_pianist.music import NoteEvent, assign_right_hand_fingering, write_monophonic_midi
 from ala_pianist.pipelines.pipeline1 import pipeline1_events_from_pitches, run_pipeline1
-from ala_pianist.rl import GeneralOneHandGoalEnv
+from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
 
 
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
@@ -29,7 +29,17 @@ SEQUENCES = {
 }
 
 
-def evaluate_general_model(model_path: Path, pitches: list[int], *, seed: int, horizon_steps: int) -> dict:
+def evaluate_general_model(
+    model_path: Path,
+    pitches: list[int],
+    *,
+    seed: int,
+    horizon_steps: int,
+    action_mode: str,
+    action_repeat: int,
+    ramp_steps: int,
+    reward_config: GeneralRewardConfig,
+) -> dict:
     model = SAC.load(model_path)
     midi_path = _write_sequence_midi(pitches, OUT_DIR / "eval_midi" / f"general_{'_'.join(map(str, pitches))}.mid")
     env = GeneralOneHandGoalEnv(
@@ -39,6 +49,10 @@ def evaluate_general_model(model_path: Path, pitches: list[int], *, seed: int, h
         seed=seed,
         lookahead=1,
         horizon_steps=horizon_steps,
+        action_mode=action_mode,
+        action_repeat=action_repeat,
+        ramp_steps=ramp_steps,
+        reward_config=reward_config,
     )
     obs, info = env.reset(seed=seed)
     total_reward = 0.0
@@ -64,6 +78,9 @@ def evaluate_general_model(model_path: Path, pitches: list[int], *, seed: int, h
         "midi_path": str(midi_path),
         "target_recall": target_hits / max(1, len(target_keys)),
         "strict_outcome": _strict_outcome(target_keys, pressed_keys, max_target, max_unintended),
+        "action_mode": action_mode,
+        "action_repeat": action_repeat,
+        "ramp_steps": ramp_steps,
         "wrong_key_count": len(wrong_pressed),
         "wrong_pressed_keys": wrong_pressed,
         "max_target_key_state": max_target,
@@ -152,6 +169,24 @@ def maybe_hybrid_controller(dsharp_path: Path | None, d5_path: Path | None) -> H
     return HybridPipeline1Controller(residual_model_paths=policies) if policies else None
 
 
+def reward_config_from_profile(profile: str) -> GeneralRewardConfig:
+    if profile == "default":
+        return GeneralRewardConfig()
+    if profile == "press_bonus":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=1.5,
+            wrong_pressed_weight=1.0,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=5.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=1.0,
+            high_unintended_threshold=0.75,
+        )
+    raise ValueError(f"Unknown reward profile {profile!r}.")
+
+
 def parse_stage_model(raw: str) -> tuple[str, Path]:
     if "=" in raw:
         label, path = raw.split("=", 1)
@@ -183,6 +218,11 @@ def main() -> None:
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--seed", type=int, default=23)
     parser.add_argument("--horizon-steps", type=int, default=96)
+    parser.add_argument("--action-mode", default="direct", choices=["direct", "hold", "ramp_hold"])
+    parser.add_argument("--action-repeat", type=int, default=1)
+    parser.add_argument("--ramp-steps", type=int, default=1)
+    parser.add_argument("--reward-profile", default="default", choices=["default", "press_bonus"])
+    parser.add_argument("--sequence", action="append", choices=sorted(SEQUENCES), default=None)
     parser.add_argument("--dsharp-residual-model-path", default=str(D_SHARP_MODEL))
     parser.add_argument("--d5-residual-model-path", default=str(D5_MODEL))
     args = parser.parse_args()
@@ -190,6 +230,7 @@ def main() -> None:
     OUT_DIR = Path(args.output_dir)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     model_path = Path(args.model_path)
+    reward_config = reward_config_from_profile(args.reward_profile)
     stage_models = [("general_policy", model_path)]
     stage_models.extend(parse_stage_model(raw) for raw in args.compare_model_path)
     hybrid = maybe_hybrid_controller(
@@ -197,8 +238,14 @@ def main() -> None:
         Path(args.d5_residual_model_path) if args.d5_residual_model_path else None,
     )
 
+    selected_sequences = {
+        name: pitches
+        for name, pitches in SEQUENCES.items()
+        if args.sequence is None or name in set(args.sequence)
+    }
+
     summary = {}
-    for name, pitches in SEQUENCES.items():
+    for name, pitches in selected_sequences.items():
         print(f"evaluating_sequence={name} pitches={pitches}")
         sequence_summary = {
             "zero": evaluate_zero(pitches, seed=args.seed, horizon_steps=args.horizon_steps),
@@ -215,6 +262,10 @@ def main() -> None:
                 pitches,
                 seed=args.seed,
                 horizon_steps=args.horizon_steps,
+                action_mode=args.action_mode,
+                action_repeat=args.action_repeat,
+                ramp_steps=args.ramp_steps,
+                reward_config=reward_config,
             )
         if hybrid is not None:
             sequence_summary["hybrid_residual"] = evaluate_pipeline_baseline(
@@ -226,7 +277,14 @@ def main() -> None:
         summary[name] = sequence_summary
 
     summary_path = OUT_DIR / "general_one_hand_eval_summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+    payload = {
+        "action_mode": args.action_mode,
+        "action_repeat": args.action_repeat,
+        "ramp_steps": args.ramp_steps,
+        "reward_profile": args.reward_profile,
+        "sequences": summary,
+    }
+    summary_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     print(f"summary_path={summary_path}")
     for name, sequence in summary.items():
         general = sequence["general_policy"]

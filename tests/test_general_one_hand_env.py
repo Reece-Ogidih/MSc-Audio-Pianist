@@ -197,3 +197,74 @@ def test_general_one_hand_env_rescales_normalized_actions(tmp_path):
     midpoint = env.rescale_action(np.zeros(22, dtype=np.float32))
     assert np.all(midpoint >= native_low)
     assert np.all(midpoint <= native_high)
+
+
+def test_direct_action_mode_preserves_single_internal_step(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=4,
+        action_mode="direct",
+        action_repeat=4,
+    )
+    env.reset()
+    _, _, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+
+    assert info["action_mode"] == "direct"
+    assert info["internal_steps"] == 1
+
+
+def test_hold_action_mode_repeats_internal_steps(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=4,
+        action_mode="hold",
+        action_repeat=3,
+    )
+    env.reset()
+    _, reward, terminated, truncated, info = env.step(np.zeros(22, dtype=np.float32))
+
+    assert np.isfinite(reward)
+    assert info["action_mode"] == "hold"
+    assert info["action_repeat"] == 3
+    assert info["internal_steps"] == 3
+    assert not terminated
+    assert not truncated
+
+
+def test_hold_action_mode_respects_horizon(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=2,
+        action_mode="hold",
+        action_repeat=4,
+    )
+    env.reset()
+    _, _, terminated, truncated, info = env.step(np.zeros(22, dtype=np.float32))
+
+    assert info["internal_steps"] == 2
+    assert terminated or truncated
+
+
+def test_press_bonus_reward_component_exists(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=1,
+        reward_config=GeneralRewardConfig(target_activation_bonus=5.0),
+    )
+    env.reset()
+    _, _, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+
+    assert "target_activation" in info["reward_components"]
+    assert "high_unintended" in info["reward_components"]

@@ -90,6 +90,26 @@ def parse_reward_config(raw: str | None) -> GeneralRewardConfig:
     return GeneralRewardConfig(**payload)
 
 
+def reward_config_from_profile(profile: str, override: str | None = None) -> GeneralRewardConfig:
+    if override is not None:
+        return parse_reward_config(override)
+    if profile == "default":
+        return GeneralRewardConfig()
+    if profile == "press_bonus":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=1.5,
+            wrong_pressed_weight=1.0,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=5.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=1.0,
+            high_unintended_threshold=0.75,
+        )
+    raise ValueError(f"Unknown reward profile {profile!r}.")
+
+
 def parse_midi_pitches(raw: str | None) -> tuple[int, ...] | None:
     if raw is None or raw == "":
         return None
@@ -159,8 +179,12 @@ def main() -> None:
     parser.add_argument("--midi-pitches", default=None)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--reward-config", default=None)
+    parser.add_argument("--reward-profile", default="default", choices=["default", "press_bonus"])
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--horizon-steps", type=int, default=64)
+    parser.add_argument("--action-mode", default="direct", choices=["direct", "hold", "ramp_hold"])
+    parser.add_argument("--action-repeat", type=int, default=1)
+    parser.add_argument("--ramp-steps", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--resume-model-path", default=None)
     parser.add_argument("--reset-num-timesteps", default="false")
@@ -169,7 +193,7 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    reward_config = parse_reward_config(args.reward_config)
+    reward_config = reward_config_from_profile(args.reward_profile, args.reward_config)
     midi_pitches = parse_midi_pitches(args.midi_pitches)
     midi_min = min(midi_pitches) if midi_pitches is not None else args.midi_min
     midi_max = max(midi_pitches) if midi_pitches is not None else args.midi_max
@@ -184,6 +208,9 @@ def main() -> None:
         "lookahead": args.lookahead,
         "horizon_steps": args.horizon_steps,
         "reward_config": reward_config,
+        "action_mode": args.action_mode,
+        "action_repeat": args.action_repeat,
+        "ramp_steps": args.ramp_steps,
     }
 
     env = GeneralOneHandGoalEnv(**env_kwargs)
@@ -197,6 +224,10 @@ def main() -> None:
     print(f"reset_target_keys={info['target_keys']}")
     print(f"midi_pitches={midi_pitches if midi_pitches is not None else tuple(range(midi_min, midi_max + 1))}")
     print(f"resume_model_path={args.resume_model_path}")
+    print(f"action_mode={args.action_mode}")
+    print(f"action_repeat={args.action_repeat}")
+    print(f"ramp_steps={args.ramp_steps}")
+    print(f"reward_profile={args.reward_profile}")
     if args.dry_run:
         return
 
@@ -212,7 +243,8 @@ def main() -> None:
     stage_prefix = f"{args.stage_name}_" if args.stage_name else ""
     run_name = (
         f"{stage_prefix}general_one_hand_sac_{args.curriculum}_pitches{pitch_part}_"
-        f"lookahead{args.lookahead}_seed{args.seed}_{args.timesteps}"
+        f"lookahead{args.lookahead}_{args.action_mode}x{args.action_repeat}_"
+        f"{args.reward_profile}_seed{args.seed}_{args.timesteps}"
     )
     model_path = output_dir / run_name
     model.save(model_path)
@@ -228,6 +260,10 @@ def main() -> None:
         "midi_max": midi_max,
         "midi_pitches": midi_pitches,
         "curriculum": args.curriculum,
+        "action_mode": args.action_mode,
+        "action_repeat": args.action_repeat,
+        "ramp_steps": args.ramp_steps,
+        "reward_profile": args.reward_profile,
         "resume_model_path": args.resume_model_path,
         "reset_num_timesteps": parse_bool(args.reset_num_timesteps),
         "stage_name": args.stage_name,
@@ -235,6 +271,8 @@ def main() -> None:
             "action_space_shape": env.action_space.shape,
             "observation_space_shape": env.observation_space.shape,
             "lookahead": args.lookahead,
+            "action_mode": args.action_mode,
+            "action_repeat": args.action_repeat,
         },
         "reward_config": reward_config.__dict__,
         "native_goal_shape": tuple(env.native_goal_shape),

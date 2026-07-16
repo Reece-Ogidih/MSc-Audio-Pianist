@@ -31,6 +31,7 @@ def test_training_arg_helpers_parse_midi_pitches_and_booleans():
     module = _training_script_module()
     assert module.parse_midi_pitches("73,75") == (73, 75)
     assert module.parse_midi_pitches("73, 74,75") == (73, 74, 75)
+    assert module.parse_pitch_sampling_weights("0.7,0.3") == (0.7, 0.3)
     assert module.parse_midi_pitches(None) is None
     assert module.parse_bool("false") is False
     assert module.parse_bool("true") is True
@@ -54,6 +55,16 @@ def test_reward_profile_cleanup_exists_and_is_gated():
     assert config.gated_wrong_pressed_weight > 0.0
     assert config.nearby_wrong_key_weight > 0.0
     assert config.wrong_travel_weight < config.gated_unintended_weight
+
+
+def test_reward_profile_anti_coupling_exists_and_is_asymmetric():
+    module = _training_script_module()
+    config = module.reward_config_from_profile("anti_coupling")
+
+    assert config.cleanup_gate_threshold < 1.0
+    assert config.csharp_dsharp_key54_weight > config.dsharp_csharp_key52_weight
+    assert config.csharp_dsharp_pressed_weight > config.dsharp_csharp_pressed_weight
+    assert config.action_weight < 0.01
 
 
 def test_general_policy_eval_fields_without_trained_model(tmp_path):

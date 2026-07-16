@@ -143,6 +143,23 @@ def test_explicit_pitch_curriculum_cycles_only_requested_notes(tmp_path):
     assert sampled == [73, 75, 73, 75, 73, 75]
 
 
+def test_weighted_pitch_sampling_biases_reset_distribution(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73, 75),
+        pitch_sampling_weights=(0.7, 0.3),
+        seed=11,
+        lookahead=1,
+        horizon_steps=1,
+    )
+
+    sampled = [env.reset(seed=11 if index == 0 else None)[1]["sampled_midi_pitch"] for index in range(100)]
+
+    assert sampled.count(73) == 70
+    assert sampled.count(75) == 30
+
+
 def test_curriculum_cycle_is_deterministic_with_seed(tmp_path):
     kwargs = dict(
         curriculum="single_notes",
@@ -289,3 +306,44 @@ def test_cleanup_reward_components_are_logged(tmp_path):
 
     assert "cleanup_gate" in info["reward_components"]
     assert "nearby_wrong_key_state" in info["reward_components"]
+
+
+def test_anti_coupling_reward_components_and_penalties(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="single_notes",
+        midi_pitches=(73,),
+        lookahead=1,
+        horizon_steps=1,
+        reward_config=GeneralRewardConfig(
+            cleanup_gate_threshold=0.75,
+            csharp_dsharp_key54_weight=5.0,
+            dsharp_csharp_key52_weight=2.0,
+        ),
+    )
+    env.reset()
+    _, _, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+
+    components = info["reward_components"]
+    assert "csharp_dsharp_key54_state" in components
+    assert "dsharp_csharp_key52_state" in components
+
+    base = dict(components)
+    base.update(
+        {
+            "cleanup_gate": 1.0,
+            "csharp_dsharp_key54_state": 0.0,
+            "dsharp_csharp_key52_state": 0.0,
+            "csharp_dsharp_key54_pressed": 0.0,
+            "dsharp_csharp_key52_pressed": 0.0,
+        }
+    )
+    csharp_penalized = dict(base, csharp_dsharp_key54_state=0.5)
+    dsharp_penalized = dict(base, dsharp_csharp_key52_state=0.5)
+
+    assert env._combine_reward_components(csharp_penalized) < env._combine_reward_components(base)
+    assert env._combine_reward_components(dsharp_penalized) < env._combine_reward_components(base)
+    assert (
+        env._combine_reward_components(csharp_penalized)
+        < env._combine_reward_components(dsharp_penalized)
+    )

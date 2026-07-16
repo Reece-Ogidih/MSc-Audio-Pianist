@@ -200,6 +200,26 @@ def reward_config_from_profile(profile: str) -> GeneralRewardConfig:
             gated_wrong_pressed_weight=2.0,
             nearby_wrong_key_weight=2.0,
         )
+    if profile == "anti_coupling":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.20,
+            wrong_pressed_weight=0.25,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.5,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=2.0,
+            gated_wrong_pressed_weight=1.5,
+            nearby_wrong_key_weight=1.0,
+            csharp_dsharp_key54_weight=5.0,
+            csharp_dsharp_pressed_weight=3.0,
+            dsharp_csharp_key52_weight=2.0,
+            dsharp_csharp_pressed_weight=1.0,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -240,7 +260,7 @@ def main() -> None:
     parser.add_argument(
         "--reward-profile",
         default="default",
-        choices=["default", "press_bonus", "cleanup", "gated_cleanliness"],
+        choices=["default", "press_bonus", "cleanup", "gated_cleanliness", "anti_coupling"],
     )
     parser.add_argument("--sequence", action="append", choices=sorted(SEQUENCES), default=None)
     parser.add_argument("--dsharp-residual-model-path", default=str(D_SHARP_MODEL))

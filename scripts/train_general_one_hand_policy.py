@@ -144,6 +144,29 @@ def reward_config_from_profile(profile: str, override: str | None = None) -> Gen
             dsharp_csharp_key52_weight=2.0,
             dsharp_csharp_pressed_weight=1.0,
         )
+    if profile == "transition_cleanup":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.25,
+            wrong_pressed_weight=0.30,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.5,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=1.5,
+            gated_wrong_pressed_weight=1.0,
+            nearby_wrong_key_weight=1.0,
+            csharp_dsharp_key54_weight=4.0,
+            csharp_dsharp_pressed_weight=2.5,
+            dsharp_csharp_key52_weight=1.5,
+            dsharp_csharp_pressed_weight=0.75,
+            release_previous_key_weight=1.5,
+            transition_stray_key_weight=3.0,
+            transition_stray_pressed_weight=1.5,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -170,6 +193,18 @@ def parse_pitch_sampling_weights(raw: str | None) -> tuple[float, ...] | None:
     if total <= 0.0:
         raise ValueError("--pitch-sampling-weights must contain at least one positive value.")
     return tuple(weight / total for weight in weights)
+
+
+def parse_sequence_pitches(raw: str | None) -> tuple[tuple[int, ...], ...] | None:
+    if raw is None or raw == "":
+        return None
+    sequences = []
+    for sequence_raw in raw.split(";"):
+        sequence = tuple(int(part.strip()) for part in sequence_raw.split(",") if part.strip())
+        if not sequence:
+            raise ValueError("--sequence-pitches must not contain empty sequences.")
+        sequences.append(sequence)
+    return tuple(sequences)
 
 
 def parse_bool(raw: str | bool) -> bool:
@@ -229,12 +264,21 @@ def main() -> None:
     parser.add_argument("--midi-max", type=int, default=75)
     parser.add_argument("--midi-pitches", default=None)
     parser.add_argument("--pitch-sampling-weights", default=None)
+    parser.add_argument("--sequence-pitches", default=None)
+    parser.add_argument("--sequence-sampling-weights", default=None)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--reward-config", default=None)
     parser.add_argument(
         "--reward-profile",
         default="default",
-        choices=["default", "press_bonus", "cleanup", "gated_cleanliness", "anti_coupling"],
+        choices=[
+            "default",
+            "press_bonus",
+            "cleanup",
+            "gated_cleanliness",
+            "anti_coupling",
+            "transition_cleanup",
+        ],
     )
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--horizon-steps", type=int, default=64)
@@ -253,12 +297,19 @@ def main() -> None:
     reward_config = reward_config_from_profile(args.reward_profile, args.reward_config)
     midi_pitches = parse_midi_pitches(args.midi_pitches)
     pitch_sampling_weights = parse_pitch_sampling_weights(args.pitch_sampling_weights)
+    sequence_pitches = parse_sequence_pitches(args.sequence_pitches)
+    sequence_sampling_weights = parse_pitch_sampling_weights(args.sequence_sampling_weights)
     midi_min = min(midi_pitches) if midi_pitches is not None else args.midi_min
     midi_max = max(midi_pitches) if midi_pitches is not None else args.midi_max
     if pitch_sampling_weights is not None:
         pitch_count = len(midi_pitches) if midi_pitches is not None else midi_max - midi_min + 1
         if len(pitch_sampling_weights) != pitch_count:
             raise ValueError("--pitch-sampling-weights must match the configured pitch count.")
+    if sequence_sampling_weights is not None:
+        if sequence_pitches is None:
+            raise ValueError("--sequence-sampling-weights requires --sequence-pitches.")
+        if len(sequence_sampling_weights) != len(sequence_pitches):
+            raise ValueError("--sequence-sampling-weights must match --sequence-pitches.")
     env_kwargs = {
         "generated_midi_dir": str(output_dir / "generated_midi"),
         "curriculum": args.curriculum,
@@ -266,6 +317,8 @@ def main() -> None:
         "midi_max": midi_max,
         "midi_pitches": midi_pitches,
         "pitch_sampling_weights": pitch_sampling_weights,
+        "sequence_pitches": sequence_pitches,
+        "sequence_sampling_weights": sequence_sampling_weights,
         "seed": args.seed,
         "note_count": 4,
         "lookahead": args.lookahead,
@@ -287,6 +340,8 @@ def main() -> None:
     print(f"reset_target_keys={info['target_keys']}")
     print(f"midi_pitches={midi_pitches if midi_pitches is not None else tuple(range(midi_min, midi_max + 1))}")
     print(f"pitch_sampling_weights={pitch_sampling_weights}")
+    print(f"sequence_pitches={sequence_pitches}")
+    print(f"sequence_sampling_weights={sequence_sampling_weights}")
     print(f"resume_model_path={args.resume_model_path}")
     print(f"action_mode={args.action_mode}")
     print(f"action_repeat={args.action_repeat}")
@@ -340,6 +395,8 @@ def main() -> None:
         "midi_max": midi_max,
         "midi_pitches": midi_pitches,
         "pitch_sampling_weights": pitch_sampling_weights,
+        "sequence_pitches": sequence_pitches,
+        "sequence_sampling_weights": sequence_sampling_weights,
         "curriculum": args.curriculum,
         "action_mode": args.action_mode,
         "action_repeat": args.action_repeat,

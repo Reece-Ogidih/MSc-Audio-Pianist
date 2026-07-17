@@ -22,6 +22,8 @@ SEQUENCES = {
     "single_csharp5": [73],
     "single_dsharp5": [75],
     "stage2_pair": [73, 75],
+    "stage2_reverse_pair": [75, 73],
+    "stage2_return_pair": [73, 75, 73],
     "debug_keyset": [73, 74, 75],
     "current_phrase": [69, 73, 75, 71],
     "d5_dsharp5": [74, 75, 74, 75],
@@ -220,6 +222,29 @@ def reward_config_from_profile(profile: str) -> GeneralRewardConfig:
             dsharp_csharp_key52_weight=2.0,
             dsharp_csharp_pressed_weight=1.0,
         )
+    if profile == "transition_cleanup":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.25,
+            wrong_pressed_weight=0.30,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.5,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=1.5,
+            gated_wrong_pressed_weight=1.0,
+            nearby_wrong_key_weight=1.0,
+            csharp_dsharp_key54_weight=4.0,
+            csharp_dsharp_pressed_weight=2.5,
+            dsharp_csharp_key52_weight=1.5,
+            dsharp_csharp_pressed_weight=0.75,
+            release_previous_key_weight=1.5,
+            transition_stray_key_weight=3.0,
+            transition_stray_pressed_weight=1.5,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -260,7 +285,14 @@ def main() -> None:
     parser.add_argument(
         "--reward-profile",
         default="default",
-        choices=["default", "press_bonus", "cleanup", "gated_cleanliness", "anti_coupling"],
+        choices=[
+            "default",
+            "press_bonus",
+            "cleanup",
+            "gated_cleanliness",
+            "anti_coupling",
+            "transition_cleanup",
+        ],
     )
     parser.add_argument("--sequence", action="append", choices=sorted(SEQUENCES), default=None)
     parser.add_argument("--dsharp-residual-model-path", default=str(D_SHARP_MODEL))

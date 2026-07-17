@@ -41,6 +41,9 @@ class GeneralRewardConfig:
     dsharp_csharp_key52_weight: float = 0.0
     csharp_dsharp_pressed_weight: float = 0.0
     dsharp_csharp_pressed_weight: float = 0.0
+    release_previous_key_weight: float = 0.0
+    transition_stray_key_weight: float = 0.0
+    transition_stray_pressed_weight: float = 0.0
 
 
 class GeneralOneHandGoalEnv(gym.Env):
@@ -58,6 +61,8 @@ class GeneralOneHandGoalEnv(gym.Env):
         midi_max: int = 75,
         midi_pitches: tuple[int, ...] | list[int] | None = None,
         pitch_sampling_weights: tuple[float, ...] | list[float] | None = None,
+        sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None = None,
+        sequence_sampling_weights: tuple[float, ...] | list[float] | None = None,
         seed: int = 0,
         clip_index: int = 0,
         note_count: int = 4,
@@ -84,6 +89,11 @@ class GeneralOneHandGoalEnv(gym.Env):
             pitch_sampling_weights,
             len(self._available_pitches()),
         )
+        self.sequence_pitches = self._normalise_sequence_pitches(sequence_pitches)
+        self.sequence_sampling_weights = self._normalise_pitch_sampling_weights(
+            sequence_sampling_weights,
+            len(self.sequence_pitches) if self.sequence_pitches is not None else 0,
+        )
         self.curriculum = str(curriculum)
         self.seed_value = int(seed)
         self.clip_index = int(clip_index)
@@ -99,6 +109,8 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._last_reset_seed: int | None = None
         self._generated_env_cache: dict[int, tuple[Path, CurriculumClip, Any, Any]] = {}
         self._weighted_clip_indices: list[int] = []
+        self._weighted_sequence_indices: list[int] = []
+        self._last_nonempty_target_keys: tuple[int, ...] = ()
 
         self.curriculum_clip: CurriculumClip | None = None
         if midi_path is None:
@@ -153,6 +165,7 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._step_count = 0
         self._previous_normalized_action = np.zeros(22, dtype=np.float32)
         self._previous_policy_action = np.zeros(22, dtype=np.float32)
+        self._last_nonempty_target_keys = ()
         if self._regenerate_curriculum_on_reset:
             if seed is not None and seed != self._last_reset_seed:
                 self.seed_value = int(seed)
@@ -160,6 +173,7 @@ class GeneralOneHandGoalEnv(gym.Env):
                 self._last_reset_seed = int(seed)
                 self._generated_env_cache.clear()
                 self._weighted_clip_indices.clear()
+                self._weighted_sequence_indices.clear()
             clip_index = self.clip_index + self._reset_count
             self._select_generated_env(clip_index)
             self._reset_count += 1
@@ -346,6 +360,22 @@ class GeneralOneHandGoalEnv(gym.Env):
         dsharp_csharp_key52_state = float(states[52]) if 54 in target_keys else 0.0
         csharp_dsharp_key54_pressed = 1.0 if 52 in target_keys and 54 in self.current_pressed_keys() else 0.0
         dsharp_csharp_key52_pressed = 1.0 if 54 in target_keys and 52 in self.current_pressed_keys() else 0.0
+        previous_target_keys = self._last_nonempty_target_keys
+        release_gate = 1.0 if not target_keys and previous_target_keys else 0.0
+        release_previous_key_state = 0.0
+        if release_gate:
+            release_previous_key_state = float(max(states[key] for key in previous_target_keys))
+        transition_episode = self.curriculum_clip is not None and len(set(self.curriculum_clip.key_indices)) > 1
+        transition_stray_key_state = 0.0
+        transition_stray_pressed_count = 0.0
+        if transition_episode:
+            stray_keys = (55, 56, 57)
+            transition_stray_key_state = float(max(states[key] for key in stray_keys))
+            transition_stray_pressed_count = float(
+                len([key for key in self.current_pressed_keys() if key in stray_keys])
+            )
+        if target_keys:
+            self._last_nonempty_target_keys = tuple(target_keys)
         return {
             "target_key_state": target_state,
             "max_unintended_key_state": max_unintended,
@@ -362,6 +392,10 @@ class GeneralOneHandGoalEnv(gym.Env):
             "dsharp_csharp_key52_state": dsharp_csharp_key52_state,
             "csharp_dsharp_key54_pressed": csharp_dsharp_key54_pressed,
             "dsharp_csharp_key52_pressed": dsharp_csharp_key52_pressed,
+            "release_gate": release_gate,
+            "release_previous_key_state": release_previous_key_state,
+            "transition_stray_key_state": transition_stray_key_state,
+            "transition_stray_pressed_count": transition_stray_pressed_count,
         }
 
     def _combine_reward_components(self, components: dict[str, float]) -> float:
@@ -383,6 +417,9 @@ class GeneralOneHandGoalEnv(gym.Env):
             - cfg.dsharp_csharp_key52_weight * components["cleanup_gate"] * components["dsharp_csharp_key52_state"]
             - cfg.csharp_dsharp_pressed_weight * components["cleanup_gate"] * components["csharp_dsharp_key54_pressed"]
             - cfg.dsharp_csharp_pressed_weight * components["cleanup_gate"] * components["dsharp_csharp_key52_pressed"]
+            - cfg.release_previous_key_weight * components["release_gate"] * components["release_previous_key_state"]
+            - cfg.transition_stray_key_weight * components["transition_stray_key_state"]
+            - cfg.transition_stray_pressed_weight * components["transition_stray_pressed_count"]
         )
 
     def _fingering_score(self, target_keys: list[int]) -> float:
@@ -438,6 +475,8 @@ class GeneralOneHandGoalEnv(gym.Env):
             "action_repeat": self.action_repeat,
             "ramp_steps": self.ramp_steps,
             "pitch_sampling_weights": self.pitch_sampling_weights,
+            "sequence_pitches": self.sequence_pitches,
+            "sequence_sampling_weights": self.sequence_sampling_weights,
             "internal_steps": int(internal_steps),
             "native_goal_shape": tuple(self.native_goal_shape),
             "lookahead": self.lookahead,
@@ -479,6 +518,7 @@ class GeneralOneHandGoalEnv(gym.Env):
             midi_min=self.midi_min,
             midi_max=self.midi_max,
             midi_pitches=self.midi_pitches,
+            sequence_pitches=self.sequence_pitches,
             seed=self.seed_value,
             clip_index=int(cache_key),
             note_count=self.note_count,
@@ -512,17 +552,25 @@ class GeneralOneHandGoalEnv(gym.Env):
         self.midi_path, self.curriculum_clip, self.task, self.env = self._generated_env_cache[cache_key]
 
     def _curriculum_cache_key(self, clip_index: int) -> int:
+        if self.curriculum == "sequence_cleanup":
+            if self.sequence_sampling_weights is not None:
+                if not self._weighted_sequence_indices:
+                    self._weighted_sequence_indices = self._build_weighted_indices(
+                        self.sequence_sampling_weights
+                    )
+                return self._weighted_sequence_indices[int(clip_index) % len(self._weighted_sequence_indices)]
+            return int(clip_index) % max(1, len(self._available_sequences()))
         if self.curriculum == "single_notes" and self.pitch_sampling_weights is not None:
             if not self._weighted_clip_indices:
-                self._weighted_clip_indices = self._build_weighted_clip_indices()
+                self._weighted_clip_indices = self._build_weighted_indices(self.pitch_sampling_weights)
             return self._weighted_clip_indices[int(clip_index) % len(self._weighted_clip_indices)]
         if self.curriculum in {"single_notes", "repeated_notes", "two_note_transitions"}:
             cycle_length = len(self._available_pitches())
             return int(clip_index) % max(1, cycle_length)
         return int(clip_index)
 
-    def _build_weighted_clip_indices(self) -> list[int]:
-        weights = np.asarray(self.pitch_sampling_weights, dtype=float)
+    def _build_weighted_indices(self, weights: tuple[float, ...]) -> list[int]:
+        weights = np.asarray(weights, dtype=float)
         scale = 100
         counts = np.maximum(1, np.rint(weights * scale).astype(int))
         indices: list[int] = []
@@ -541,6 +589,11 @@ class GeneralOneHandGoalEnv(gym.Env):
         if self.midi_pitches is not None:
             return self.midi_pitches
         return tuple(range(self.midi_min, self.midi_max + 1))
+
+    def _available_sequences(self) -> tuple[tuple[int, ...], ...]:
+        if self.sequence_pitches is not None:
+            return self.sequence_pitches
+        return ((73,), (75,), (73, 75), (75, 73))
 
     def _pitch_suffix(self) -> str:
         if self.midi_pitches is None:
@@ -561,12 +614,27 @@ class GeneralOneHandGoalEnv(gym.Env):
         return pitches
 
     @staticmethod
+    def _normalise_sequence_pitches(
+        sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None,
+    ) -> tuple[tuple[int, ...], ...] | None:
+        if sequence_pitches is None:
+            return None
+        sequences = tuple(tuple(int(pitch) for pitch in sequence) for sequence in sequence_pitches)
+        if not sequences:
+            raise ValueError("sequence_pitches must contain at least one sequence.")
+        if any(not sequence for sequence in sequences):
+            raise ValueError("sequence_pitches must not contain empty sequences.")
+        return sequences
+
+    @staticmethod
     def _normalise_pitch_sampling_weights(
         pitch_sampling_weights: tuple[float, ...] | list[float] | None,
         pitch_count: int,
     ) -> tuple[float, ...] | None:
         if pitch_sampling_weights is None:
             return None
+        if pitch_count <= 0:
+            raise ValueError("sampling weights require at least one item.")
         weights = tuple(float(weight) for weight in pitch_sampling_weights)
         if len(weights) != int(pitch_count):
             raise ValueError("pitch_sampling_weights must match the number of available MIDI pitches.")

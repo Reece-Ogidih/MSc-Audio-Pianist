@@ -160,6 +160,25 @@ def test_weighted_pitch_sampling_biases_reset_distribution(tmp_path):
     assert sampled.count(75) == 30
 
 
+def test_sequence_cleanup_curriculum_samples_weighted_sequences(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="sequence_cleanup",
+        sequence_pitches=((73,), (75,), (73, 75), (75, 73)),
+        sequence_sampling_weights=(0.25, 0.25, 0.30, 0.20),
+        seed=11,
+        lookahead=1,
+        horizon_steps=1,
+    )
+
+    sampled = [env.reset(seed=11 if index == 0 else None)[1]["curriculum_pitches"] for index in range(100)]
+
+    assert sampled.count((73,)) == 25
+    assert sampled.count((75,)) == 25
+    assert sampled.count((73, 75)) == 30
+    assert sampled.count((75, 73)) == 20
+
+
 def test_curriculum_cycle_is_deterministic_with_seed(tmp_path):
     kwargs = dict(
         curriculum="single_notes",
@@ -347,3 +366,41 @@ def test_anti_coupling_reward_components_and_penalties(tmp_path):
         env._combine_reward_components(csharp_penalized)
         < env._combine_reward_components(dsharp_penalized)
     )
+
+
+def test_transition_cleanup_reward_components_and_penalties(tmp_path):
+    env = GeneralOneHandGoalEnv(
+        generated_midi_dir=tmp_path,
+        curriculum="sequence_cleanup",
+        sequence_pitches=((73, 75),),
+        lookahead=1,
+        horizon_steps=1,
+        reward_config=GeneralRewardConfig(
+            release_previous_key_weight=1.5,
+            transition_stray_key_weight=3.0,
+            transition_stray_pressed_weight=1.5,
+        ),
+    )
+    env.reset()
+    _, _, _, _, info = env.step(np.zeros(22, dtype=np.float32))
+    components = info["reward_components"]
+
+    assert "release_gate" in components
+    assert "release_previous_key_state" in components
+    assert "transition_stray_key_state" in components
+    assert "transition_stray_pressed_count" in components
+
+    base = dict(components)
+    base.update(
+        {
+            "release_gate": 0.0,
+            "release_previous_key_state": 0.0,
+            "transition_stray_key_state": 0.0,
+            "transition_stray_pressed_count": 0.0,
+        }
+    )
+    release_penalized = dict(base, release_gate=1.0, release_previous_key_state=0.5)
+    stray_penalized = dict(base, transition_stray_key_state=0.5, transition_stray_pressed_count=1.0)
+
+    assert env._combine_reward_components(release_penalized) < env._combine_reward_components(base)
+    assert env._combine_reward_components(stray_penalized) < env._combine_reward_components(base)

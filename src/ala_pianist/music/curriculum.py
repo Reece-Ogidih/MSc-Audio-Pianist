@@ -15,6 +15,7 @@ CURRICULUM_MODES = (
     "repeated_notes",
     "two_note_transitions",
     "short_phrases",
+    "sequence_cleanup",
 )
 
 
@@ -59,6 +60,7 @@ def generate_curriculum_events(
     midi_min: int,
     midi_max: int,
     midi_pitches: tuple[int, ...] | list[int] | None = None,
+    sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None = None,
     seed: int = 0,
     clip_index: int = 0,
     note_count: int = 4,
@@ -70,6 +72,7 @@ def generate_curriculum_events(
 
     if mode not in CURRICULUM_MODES:
         raise ValueError(f"Unknown curriculum mode {mode!r}.")
+    sequences = _normalise_sequence_pitches(sequence_pitches)
     pitches = _pitch_array(
         midi_min=midi_min,
         midi_max=midi_max,
@@ -96,6 +99,10 @@ def generate_curriculum_events(
                 candidates = [int(pitch) for pitch in pitches if int(pitch) != first]
             second = int(candidates[clip_index % len(candidates)])
         selected = [first, second]
+    elif mode == "sequence_cleanup":
+        if sequences is None:
+            sequences = ((73,), (75,), (73, 75), (75, 73))
+        selected = [int(pitch) for pitch in sequences[clip_index % len(sequences)]]
     else:
         selected = [int(rng.choice(pitches)) for _ in range(min(note_count, 6))]
 
@@ -122,6 +129,7 @@ def write_curriculum_midi(
     midi_min: int,
     midi_max: int,
     midi_pitches: tuple[int, ...] | list[int] | None = None,
+    sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None = None,
     seed: int = 0,
     clip_index: int = 0,
     note_count: int = 4,
@@ -133,6 +141,7 @@ def write_curriculum_midi(
         midi_min=midi_min,
         midi_max=midi_max,
         midi_pitches=midi_pitches,
+        sequence_pitches=sequence_pitches,
         seed=seed,
         clip_index=clip_index,
         note_count=note_count,
@@ -168,3 +177,16 @@ def _pitch_array(
     if pitches.size == 0:
         raise ValueError("At least one pitch is required.")
     return pitches
+
+
+def _normalise_sequence_pitches(
+    sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None,
+) -> tuple[tuple[int, ...], ...] | None:
+    if sequence_pitches is None:
+        return None
+    sequences = tuple(tuple(int(pitch) for pitch in sequence) for sequence in sequence_pitches)
+    if not sequences:
+        raise ValueError("At least one sequence is required.")
+    if any(not sequence for sequence in sequences):
+        raise ValueError("Sequences must not be empty.")
+    return sequences

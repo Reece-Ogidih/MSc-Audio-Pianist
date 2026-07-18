@@ -10,7 +10,13 @@ from typing import Any
 import numpy as np
 from stable_baselines3 import SAC
 
-from ala_pianist.music import NoteEvent, assign_right_hand_fingering, write_monophonic_midi
+from ala_pianist.music import (
+    assign_right_hand_fingering,
+    generate_sequence_events,
+    note_windows as shared_note_windows,
+    sequence_timing_from_profile,
+    write_sequence_midi as shared_write_sequence_midi,
+)
 from ala_pianist.rl import GeneralOneHandGoalEnv
 
 
@@ -31,27 +37,32 @@ TRACKED_KEYS = (52, 54, 55, 56, 57)
 WRONG_TRANSITION_KEYS = (55, 56, 57)
 
 
-def write_sequence_midi(pitches: list[int], path: Path) -> Path:
+def write_sequence_midi(pitches: list[int], path: Path, *, timing_profile: str = "aligned") -> Path:
     midi_min = min(pitches)
     midi_max = max(pitches)
-    events = []
-    for index, pitch in enumerate(pitches):
-        events.append(
-            NoteEvent(
-                pitch=int(pitch),
-                start=0.40 * index,
-                duration=0.28,
-                velocity=90,
-                fingering=assign_right_hand_fingering(int(pitch), midi_min, midi_max),
-            )
-        )
-    return write_monophonic_midi(events, path, title="Transition cleanup diagnostic")
+    return shared_write_sequence_midi(
+        pitches,
+        path,
+        midi_min=midi_min,
+        midi_max=midi_max,
+        timing=sequence_timing_from_profile(timing_profile),
+        fingering_fn=assign_right_hand_fingering,
+        title=f"Transition cleanup {timing_profile} diagnostic",
+    )
 
 
-def rollout(model: SAC, pitches: list[int], *, seed: int, horizon_steps: int) -> dict[str, Any]:
+def rollout(
+    model: SAC,
+    pitches: list[int],
+    *,
+    seed: int,
+    horizon_steps: int,
+    timing_profile: str = "aligned",
+) -> dict[str, Any]:
     midi_path = write_sequence_midi(
         pitches,
-        OUT_DIR / "diagnostic_midi" / f"transition_{'_'.join(map(str, pitches))}.mid",
+        OUT_DIR / "diagnostic_midi" / f"transition_{timing_profile}_{'_'.join(map(str, pitches))}.mid",
+        timing_profile=timing_profile,
     )
     env = GeneralOneHandGoalEnv(
         midi_path=midi_path,
@@ -109,7 +120,7 @@ def rollout(model: SAC, pitches: list[int], *, seed: int, horizon_steps: int) ->
     strict = strict_outcome(target_keys, pressed_union, records)
     return {
         "pitches": pitches,
-        "note_windows": note_windows(pitches),
+        "note_windows": note_windows(pitches, timing_profile=timing_profile),
         "pressed_keys": sorted(pressed_union),
         "strict_outcome": strict,
         "first_wrong_activation": first_wrong_activation,
@@ -139,16 +150,87 @@ def classify_phase(active_target: tuple[int, ...], previous_target: tuple[int, .
     return "pre_target_or_silence"
 
 
-def note_windows(pitches: list[int]) -> list[dict[str, float | int]]:
+def note_windows(pitches: list[int], *, timing_profile: str = "aligned") -> list[dict[str, float | int]]:
+    return list(shared_note_windows(pitches, timing=sequence_timing_from_profile(timing_profile)))
+
+
+def compare_timing(pitches: list[int], *, horizon_steps: int, seed: int) -> dict[str, Any]:
+    aligned_events = generate_sequence_events(
+        pitches,
+        midi_min=min(pitches),
+        midi_max=max(pitches),
+        timing=sequence_timing_from_profile("aligned"),
+        fingering_fn=assign_right_hand_fingering,
+    )
+    legacy_events = generate_sequence_events(
+        pitches,
+        midi_min=min(pitches),
+        midi_max=max(pitches),
+        timing=sequence_timing_from_profile("legacy_curriculum"),
+        fingering_fn=assign_right_hand_fingering,
+    )
+    aligned_midi = write_sequence_midi(
+        pitches,
+        OUT_DIR / "diagnostic_midi" / "timing_aligned_73_75.mid",
+        timing_profile="aligned",
+    )
+    legacy_midi = write_sequence_midi(
+        pitches,
+        OUT_DIR / "diagnostic_midi" / "timing_legacy_curriculum_73_75.mid",
+        timing_profile="legacy_curriculum",
+    )
+    return {
+        "pitches": pitches,
+        "aligned_events": event_table(aligned_events),
+        "legacy_curriculum_events": event_table(legacy_events),
+        "events_identical": event_table(aligned_events) == event_table(legacy_events),
+        "aligned_schedule": active_target_schedule(
+            aligned_midi,
+            horizon_steps=horizon_steps,
+            seed=seed,
+        ),
+        "legacy_curriculum_schedule": active_target_schedule(
+            legacy_midi,
+            horizon_steps=horizon_steps,
+            seed=seed,
+        ),
+    }
+
+
+def event_table(events) -> list[dict[str, float | int | None]]:
     return [
         {
-            "pitch": int(pitch),
-            "key_index": int(pitch) - 21,
-            "start_seconds": 0.40 * index,
-            "end_seconds": 0.40 * index + 0.28,
+            "pitch": int(event.pitch),
+            "key_index": int(event.pitch) - 21,
+            "start": float(event.start),
+            "end": float(event.start + event.duration),
+            "duration": float(event.duration),
+            "velocity": int(event.velocity),
+            "fingering": event.fingering,
         }
-        for index, pitch in enumerate(pitches)
+        for event in events
     ]
+
+
+def active_target_schedule(midi_path: Path, *, horizon_steps: int, seed: int) -> list[dict[str, Any]]:
+    env = GeneralOneHandGoalEnv(
+        midi_path=midi_path,
+        midi_min=73,
+        midi_max=75,
+        seed=seed,
+        lookahead=1,
+        horizon_steps=horizon_steps,
+        action_mode="direct",
+        action_repeat=1,
+    )
+    env.reset(seed=seed)
+    schedule = []
+    for step in range(horizon_steps):
+        schedule.append({"step": step, "native_target_keys": tuple(env.current_target_keys())})
+        _, _, terminated, truncated, _ = env.step(np.zeros(22, dtype=np.float32))
+        if terminated or truncated:
+            break
+    return schedule
 
 
 def strict_outcome(target_keys: set[int], pressed: set[int], records: list[dict[str, Any]]) -> str:
@@ -169,18 +251,44 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--horizon-steps", type=int, default=112)
     parser.add_argument(
+        "--sequence-timing-profile",
+        default="aligned",
+        choices=["aligned", "legacy_curriculum"],
+    )
+    parser.add_argument("--compare-timing", action="store_true")
+    parser.add_argument(
         "--output-path",
         default=str(OUT_DIR / "transition_diagnostics_stage2e.json"),
     )
     args = parser.parse_args()
 
+    if args.compare_timing:
+        comparison = compare_timing([73, 75], horizon_steps=args.horizon_steps, seed=args.seed)
+        output_path = Path(args.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(comparison, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"summary_path={output_path}")
+        print(f"events_identical={comparison['events_identical']}")
+        print(f"aligned_events={comparison['aligned_events']}")
+        print(f"legacy_curriculum_events={comparison['legacy_curriculum_events']}")
+        print(f"aligned_schedule_first12={comparison['aligned_schedule'][:12]}")
+        print(f"legacy_schedule_first12={comparison['legacy_curriculum_schedule'][:12]}")
+        return
+
     model = SAC.load(args.model_path)
     results = {
         "model_path": str(args.model_path),
         "rollouts": {
-            name: rollout(model, pitches, seed=args.seed, horizon_steps=args.horizon_steps)
+            name: rollout(
+                model,
+                pitches,
+                seed=args.seed,
+                horizon_steps=args.horizon_steps,
+                timing_profile=args.sequence_timing_profile,
+            )
             for name, pitches in SEQUENCES.items()
         },
+        "sequence_timing_profile": args.sequence_timing_profile,
     }
     output_path = Path(args.output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

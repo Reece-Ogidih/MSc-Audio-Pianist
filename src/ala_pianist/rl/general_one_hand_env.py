@@ -16,6 +16,7 @@ from robopianist.music import midi_file
 from robopianist.suite.tasks.piano_with_one_shadow_hand import PianoWithOneShadowHand
 
 from ala_pianist.music import CurriculumClip, write_curriculum_midi
+from ala_pianist.music.sequence_generation import sequence_timing_from_profile
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,11 @@ class GeneralOneHandGoalEnv(gym.Env):
         pitch_sampling_weights: tuple[float, ...] | list[float] | None = None,
         sequence_pitches: tuple[tuple[int, ...], ...] | list[tuple[int, ...]] | None = None,
         sequence_sampling_weights: tuple[float, ...] | list[float] | None = None,
+        sequence_timing_profile: str = "legacy_curriculum",
+        note_duration: float | None = None,
+        note_gap: float | None = None,
+        note_velocity: int | None = None,
+        timing_jitter: float = 0.0,
         seed: int = 0,
         clip_index: int = 0,
         note_count: int = 4,
@@ -94,6 +100,14 @@ class GeneralOneHandGoalEnv(gym.Env):
             sequence_sampling_weights,
             len(self.sequence_pitches) if self.sequence_pitches is not None else 0,
         )
+        self.sequence_timing = sequence_timing_from_profile(
+            sequence_timing_profile,
+            note_duration=note_duration,
+            note_gap=note_gap,
+            velocity=note_velocity,
+            timing_jitter=timing_jitter,
+        )
+        self.sequence_timing_profile = str(sequence_timing_profile)
         self.curriculum = str(curriculum)
         self.seed_value = int(seed)
         self.clip_index = int(clip_index)
@@ -477,6 +491,11 @@ class GeneralOneHandGoalEnv(gym.Env):
             "pitch_sampling_weights": self.pitch_sampling_weights,
             "sequence_pitches": self.sequence_pitches,
             "sequence_sampling_weights": self.sequence_sampling_weights,
+            "sequence_timing_profile": self.sequence_timing_profile,
+            "note_duration": self.sequence_timing.note_duration,
+            "note_gap": self.sequence_timing.note_gap,
+            "note_velocity": self.sequence_timing.velocity,
+            "timing_jitter": self.sequence_timing.timing_jitter,
             "internal_steps": int(internal_steps),
             "native_goal_shape": tuple(self.native_goal_shape),
             "lookahead": self.lookahead,
@@ -522,6 +541,9 @@ class GeneralOneHandGoalEnv(gym.Env):
             seed=self.seed_value,
             clip_index=int(cache_key),
             note_count=self.note_count,
+            note_duration=self.sequence_timing.note_duration,
+            gap=self.sequence_timing.note_gap,
+            velocity=self.sequence_timing.velocity,
         )
 
     def _build_composer_env(self, midi_path: str | Path) -> None:

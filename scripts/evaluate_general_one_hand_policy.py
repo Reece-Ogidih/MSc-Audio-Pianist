@@ -7,7 +7,11 @@ import numpy as np
 from stable_baselines3 import SAC
 
 from ala_pianist.controllers import HybridPipeline1Controller
-from ala_pianist.music import NoteEvent, assign_right_hand_fingering, write_monophonic_midi
+from ala_pianist.music import (
+    assign_right_hand_fingering,
+    sequence_timing_from_profile,
+    write_sequence_midi,
+)
 from ala_pianist.pipelines.pipeline1 import pipeline1_events_from_pitches, run_pipeline1
 from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
 
@@ -41,9 +45,14 @@ def evaluate_general_model(
     action_repeat: int,
     ramp_steps: int,
     reward_config: GeneralRewardConfig,
+    timing_profile: str,
 ) -> dict:
     model = SAC.load(model_path)
-    midi_path = _write_sequence_midi(pitches, OUT_DIR / "eval_midi" / f"general_{'_'.join(map(str, pitches))}.mid")
+    midi_path = _write_sequence_midi(
+        pitches,
+        OUT_DIR / "eval_midi" / f"general_{timing_profile}_{'_'.join(map(str, pitches))}.mid",
+        timing_profile=timing_profile,
+    )
     env = GeneralOneHandGoalEnv(
         midi_path=midi_path,
         midi_min=min(pitches),
@@ -94,8 +103,18 @@ def evaluate_general_model(
     }
 
 
-def evaluate_zero(pitches: list[int], *, seed: int, horizon_steps: int) -> dict:
-    midi_path = _write_sequence_midi(pitches, OUT_DIR / "eval_midi" / f"zero_{'_'.join(map(str, pitches))}.mid")
+def evaluate_zero(
+    pitches: list[int],
+    *,
+    seed: int,
+    horizon_steps: int,
+    timing_profile: str,
+) -> dict:
+    midi_path = _write_sequence_midi(
+        pitches,
+        OUT_DIR / "eval_midi" / f"zero_{'_'.join(map(str, pitches))}.mid",
+        timing_profile=timing_profile,
+    )
     env = GeneralOneHandGoalEnv(
         midi_path=midi_path,
         midi_min=min(pitches),
@@ -128,20 +147,18 @@ def evaluate_zero(pitches: list[int], *, seed: int, horizon_steps: int) -> dict:
     }
 
 
-def _write_sequence_midi(pitches: list[int], path: Path) -> Path:
+def _write_sequence_midi(pitches: list[int], path: Path, *, timing_profile: str) -> Path:
     midi_min = min(pitches)
     midi_max = max(pitches)
-    events = [
-        NoteEvent(
-            pitch=int(pitch),
-            start=0.40 * index,
-            duration=0.28,
-            velocity=90,
-            fingering=assign_right_hand_fingering(int(pitch), midi_min, midi_max),
-        )
-        for index, pitch in enumerate(pitches)
-    ]
-    return write_monophonic_midi(events, path, title="general one hand evaluation sequence")
+    return write_sequence_midi(
+        pitches,
+        path,
+        midi_min=midi_min,
+        midi_max=midi_max,
+        timing=sequence_timing_from_profile(timing_profile),
+        fingering_fn=assign_right_hand_fingering,
+        title=f"general one hand {timing_profile} evaluation sequence",
+    )
 
 
 def evaluate_pipeline_baseline(
@@ -283,6 +300,11 @@ def main() -> None:
     parser.add_argument("--action-repeat", type=int, default=1)
     parser.add_argument("--ramp-steps", type=int, default=1)
     parser.add_argument(
+        "--sequence-timing-profile",
+        default="aligned",
+        choices=["aligned", "legacy_curriculum"],
+    )
+    parser.add_argument(
         "--reward-profile",
         default="default",
         choices=[
@@ -320,7 +342,12 @@ def main() -> None:
     for name, pitches in selected_sequences.items():
         print(f"evaluating_sequence={name} pitches={pitches}")
         sequence_summary = {
-            "zero": evaluate_zero(pitches, seed=args.seed, horizon_steps=args.horizon_steps),
+            "zero": evaluate_zero(
+                pitches,
+                seed=args.seed,
+                horizon_steps=args.horizon_steps,
+                timing_profile=args.sequence_timing_profile,
+            ),
             "action_library_v0": evaluate_pipeline_baseline(
                 f"{name}_v0",
                 pitches,
@@ -338,6 +365,7 @@ def main() -> None:
                 action_repeat=args.action_repeat,
                 ramp_steps=args.ramp_steps,
                 reward_config=reward_config,
+                timing_profile=args.sequence_timing_profile,
             )
         if hybrid is not None:
             sequence_summary["hybrid_residual"] = evaluate_pipeline_baseline(
@@ -354,6 +382,7 @@ def main() -> None:
         "action_repeat": args.action_repeat,
         "ramp_steps": args.ramp_steps,
         "reward_profile": args.reward_profile,
+        "sequence_timing_profile": args.sequence_timing_profile,
         "sequences": summary,
     }
     summary_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

@@ -8,6 +8,10 @@ from pathlib import Path
 import numpy as np
 
 from ala_pianist.music.midi_utils import NoteEvent, write_monophonic_midi
+from ala_pianist.music.sequence_generation import (
+    SequenceTimingConfig,
+    generate_sequence_events,
+)
 
 
 CURRICULUM_MODES = (
@@ -103,6 +107,17 @@ def generate_curriculum_events(
         if sequences is None:
             sequences = ((73,), (75,), (73, 75), (75, 73))
         selected = [int(pitch) for pitch in sequences[clip_index % len(sequences)]]
+        return generate_sequence_events(
+            selected,
+            midi_min=midi_min,
+            midi_max=midi_max,
+            timing=SequenceTimingConfig(
+                note_duration=float(note_duration),
+                note_gap=float(gap),
+                velocity=int(velocity),
+            ),
+            fingering_fn=assign_right_hand_fingering,
+        )
     else:
         selected = [int(rng.choice(pitches)) for _ in range(min(note_count, 6))]
 
@@ -133,6 +148,9 @@ def write_curriculum_midi(
     seed: int = 0,
     clip_index: int = 0,
     note_count: int = 4,
+    note_duration: float = 0.45,
+    gap: float = 0.05,
+    velocity: int = 90,
 ) -> CurriculumClip:
     """Generate and write a curriculum MIDI clip with deterministic fingering labels."""
 
@@ -145,6 +163,9 @@ def write_curriculum_midi(
         seed=seed,
         clip_index=clip_index,
         note_count=note_count,
+        note_duration=note_duration,
+        gap=gap,
+        velocity=velocity,
     )
     midi_path = write_monophonic_midi(
         events,

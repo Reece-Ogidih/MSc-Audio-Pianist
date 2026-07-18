@@ -266,6 +266,15 @@ def main() -> None:
     parser.add_argument("--pitch-sampling-weights", default=None)
     parser.add_argument("--sequence-pitches", default=None)
     parser.add_argument("--sequence-sampling-weights", default=None)
+    parser.add_argument(
+        "--sequence-timing-profile",
+        default="legacy_curriculum",
+        choices=["legacy_curriculum", "aligned"],
+    )
+    parser.add_argument("--note-duration", type=float, default=None)
+    parser.add_argument("--note-gap", type=float, default=None)
+    parser.add_argument("--note-velocity", type=int, default=None)
+    parser.add_argument("--timing-jitter", type=float, default=0.0)
     parser.add_argument("--curriculum", default="single_notes")
     parser.add_argument("--reward-config", default=None)
     parser.add_argument(
@@ -319,6 +328,11 @@ def main() -> None:
         "pitch_sampling_weights": pitch_sampling_weights,
         "sequence_pitches": sequence_pitches,
         "sequence_sampling_weights": sequence_sampling_weights,
+        "sequence_timing_profile": args.sequence_timing_profile,
+        "note_duration": args.note_duration,
+        "note_gap": args.note_gap,
+        "note_velocity": args.note_velocity,
+        "timing_jitter": args.timing_jitter,
         "seed": args.seed,
         "note_count": 4,
         "lookahead": args.lookahead,
@@ -342,6 +356,11 @@ def main() -> None:
     print(f"pitch_sampling_weights={pitch_sampling_weights}")
     print(f"sequence_pitches={sequence_pitches}")
     print(f"sequence_sampling_weights={sequence_sampling_weights}")
+    print(f"sequence_timing_profile={args.sequence_timing_profile}")
+    print(f"note_duration={env.sequence_timing.note_duration}")
+    print(f"note_gap={env.sequence_timing.note_gap}")
+    print(f"note_velocity={env.sequence_timing.velocity}")
+    print(f"timing_jitter={env.sequence_timing.timing_jitter}")
     print(f"resume_model_path={args.resume_model_path}")
     print(f"action_mode={args.action_mode}")
     print(f"action_repeat={args.action_repeat}")
@@ -397,6 +416,11 @@ def main() -> None:
         "pitch_sampling_weights": pitch_sampling_weights,
         "sequence_pitches": sequence_pitches,
         "sequence_sampling_weights": sequence_sampling_weights,
+        "sequence_timing_profile": args.sequence_timing_profile,
+        "note_duration": env.sequence_timing.note_duration,
+        "note_gap": env.sequence_timing.note_gap,
+        "note_velocity": env.sequence_timing.velocity,
+        "timing_jitter": env.sequence_timing.timing_jitter,
         "curriculum": args.curriculum,
         "action_mode": args.action_mode,
         "action_repeat": args.action_repeat,

@@ -43,6 +43,13 @@ def test_training_arg_helpers_parse_midi_pitches_and_booleans():
     assert module.parse_bool("true") is True
 
 
+def test_training_sequence_timing_dry_run_args_exist(tmp_path):
+    module = _training_script_module()
+
+    assert module.parse_sequence_pitches("73,75") == ((73, 75),)
+    assert module.parse_pitch_sampling_weights("0.25,0.75") == (0.25, 0.75)
+
+
 def test_reward_profile_press_bonus_exists():
     module = _training_script_module()
     config = module.reward_config_from_profile("press_bonus")

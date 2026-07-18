@@ -24,11 +24,17 @@ D5_MODEL = ROOT / "experiments" / "residual_single_note" / "residual_sac_midi74_
 
 SEQUENCES = {
     "single_csharp5": [73],
+    "single_d5": [74],
     "single_dsharp5": [75],
+    "csharp5_d5": [73, 74],
+    "d5_dsharp5_once": [74, 75],
+    "dsharp5_d5": [75, 74],
+    "d5_csharp5": [74, 73],
     "stage2_pair": [73, 75],
     "stage2_reverse_pair": [75, 73],
     "stage2_return_pair": [73, 75, 73],
     "debug_keyset": [73, 74, 75],
+    "debug_keyset_reverse": [75, 74, 73],
     "current_phrase": [69, 73, 75, 71],
     "d5_dsharp5": [74, 75, 74, 75],
     "local_range_phrase": [69, 71, 73, 74, 75],

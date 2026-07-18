@@ -7,6 +7,7 @@ import numpy as np
 from stable_baselines3 import SAC
 
 from ala_pianist.controllers import HybridPipeline1Controller
+from ala_pianist.evaluation import binary_key_vector, pressed_key_metrics, timestep_key_metrics
 from ala_pianist.music import (
     assign_right_hand_fingering,
     sequence_timing_from_profile,
@@ -77,6 +78,8 @@ def evaluate_general_model(
     max_target = 0.0
     max_unintended = 0.0
     pressed_keys = set()
+    target_vectors = []
+    pressed_vectors = []
     for _ in range(horizon_steps):
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
@@ -85,14 +88,17 @@ def evaluate_general_model(
         max_target = max(max_target, float(info["target_key_state"]))
         max_unintended = max(max_unintended, float(info["max_unintended_key_state"]))
         pressed_keys.update(info["pressed_keys"])
+        target_vectors.append(binary_key_vector(info["target_keys"]))
+        pressed_vectors.append(binary_key_vector(info["pressed_keys"]))
         if terminated or truncated:
             break
     target_keys = {pitch - 21 for pitch in pitches}
     target_hits = len([key for key in target_keys if key in pressed_keys])
     wrong_pressed = [key for key in sorted(pressed_keys) if key not in target_keys]
-    return {
+    result = {
         "clip_pitches": pitches,
         "midi_path": str(midi_path),
+        "target_keys": sorted(target_keys),
         "target_recall": target_hits / max(1, len(target_keys)),
         "strict_outcome": _strict_outcome(target_keys, pressed_keys, max_target, max_unintended),
         "action_mode": action_mode,
@@ -107,6 +113,13 @@ def evaluate_general_model(
         "pressed_keys": sorted(pressed_keys),
         "final_info": dict(info),
     }
+    return _with_key_metrics(
+        result,
+        target_keys=target_keys,
+        pressed_keys=pressed_keys,
+        target_vectors=target_vectors,
+        pressed_vectors=pressed_vectors,
+    )
 
 
 def evaluate_zero(
@@ -135,22 +148,37 @@ def evaluate_zero(
     max_target = 0.0
     max_unintended = 0.0
     pressed_keys = set()
+    target_vectors = []
+    pressed_vectors = []
     for _ in range(horizon_steps):
         _, reward, terminated, truncated, info = env.step(np.zeros(22, dtype=np.float32))
         total_reward += float(reward)
         max_target = max(max_target, float(info["target_key_state"]))
         max_unintended = max(max_unintended, float(info["max_unintended_key_state"]))
         pressed_keys.update(info["pressed_keys"])
+        target_vectors.append(binary_key_vector(info["target_keys"]))
+        pressed_vectors.append(binary_key_vector(info["pressed_keys"]))
         if terminated or truncated:
             break
-    return {
+    target_keys = {pitch - 21 for pitch in pitches}
+    target_hits = len([key for key in target_keys if key in pressed_keys])
+    result = {
         "midi_path": str(midi_path),
+        "target_keys": sorted(target_keys),
+        "target_recall": target_hits / max(1, len(target_keys)),
         "max_target_key_state": max_target,
         "max_unintended_key_state": max_unintended,
         "shaped_return": total_reward,
         "pressed_keys": sorted(pressed_keys),
         "trajectory_quality": info["trajectory_quality"],
     }
+    return _with_key_metrics(
+        result,
+        target_keys=target_keys,
+        pressed_keys=pressed_keys,
+        target_vectors=target_vectors,
+        pressed_vectors=pressed_vectors,
+    )
 
 
 def _write_sequence_midi(pitches: list[int], path: Path, *, timing_profile: str) -> Path:
@@ -182,7 +210,16 @@ def evaluate_pipeline_baseline(
         build_library=build_library,
         controller=controller,
     )
-    return asdict(result)
+    payload = asdict(result)
+    target_keys = {pitch - 21 for pitch in pitches}
+    pressed_keys = {
+        int(key)
+        for note_metric in payload.get("note_metrics", ())
+        for key in note_metric.get("pressed_keys", ())
+    }
+    payload["pressed_keys"] = sorted(pressed_keys)
+    payload["target_keys"] = sorted(target_keys)
+    return _with_key_metrics(payload, target_keys=target_keys, pressed_keys=pressed_keys)
 
 
 def maybe_hybrid_controller(dsharp_path: Path | None, d5_path: Path | None) -> HybridPipeline1Controller | None:
@@ -294,6 +331,51 @@ def _strict_outcome(
     return "missed"
 
 
+def _with_key_metrics(
+    result: dict,
+    *,
+    target_keys: set[int],
+    pressed_keys: set[int],
+    target_vectors: list[np.ndarray] | None = None,
+    pressed_vectors: list[np.ndarray] | None = None,
+) -> dict:
+    pressed_metrics = pressed_key_metrics(target_keys, pressed_keys)
+    result.update(
+        {
+            "pressed_key_true_positives": pressed_metrics.true_positives,
+            "pressed_key_false_positives": pressed_metrics.false_positives,
+            "pressed_key_false_negatives": pressed_metrics.false_negatives,
+            "pressed_key_precision": pressed_metrics.precision,
+            "pressed_key_recall": pressed_metrics.recall,
+            "pressed_key_f1": pressed_metrics.f1,
+        }
+    )
+    if target_vectors is not None and pressed_vectors is not None:
+        timestep_metrics = timestep_key_metrics(target_vectors, pressed_vectors)
+        result.update(
+            {
+                "timestep_true_positives": timestep_metrics.true_positives,
+                "timestep_false_positives": timestep_metrics.false_positives,
+                "timestep_false_negatives": timestep_metrics.false_negatives,
+                "timestep_precision": timestep_metrics.precision,
+                "timestep_recall": timestep_metrics.recall,
+                "timestep_f1": timestep_metrics.f1,
+            }
+        )
+    else:
+        result.update(
+            {
+                "timestep_true_positives": None,
+                "timestep_false_positives": None,
+                "timestep_false_negatives": None,
+                "timestep_precision": None,
+                "timestep_recall": None,
+                "timestep_f1": None,
+            }
+        )
+    return result
+
+
 def main() -> None:
     global OUT_DIR
     parser = argparse.ArgumentParser()
@@ -401,6 +483,9 @@ def main() -> None:
             f"general_target={general['max_target_key_state']:.6f} "
             f"general_unintended={general['max_unintended_key_state']:.6f} "
             f"general_recall={general['target_recall']:.3f} "
+            f"general_precision={general['pressed_key_precision']:.3f} "
+            f"general_f1={general['pressed_key_f1']:.3f} "
+            f"general_timestep_f1={general['timestep_f1']:.3f} "
             f"general_pressed={general['pressed_keys']} "
             f"general_strict={general['strict_outcome']}"
         )
@@ -411,6 +496,8 @@ def main() -> None:
                 f"{name} {label}: target={result['max_target_key_state']:.6f} "
                 f"unintended={result['max_unintended_key_state']:.6f} "
                 f"recall={result['target_recall']:.3f} "
+                f"precision={result['pressed_key_precision']:.3f} "
+                f"f1={result['pressed_key_f1']:.3f} "
                 f"pressed={result['pressed_keys']} "
                 f"strict={result['strict_outcome']}"
             )

@@ -46,12 +46,20 @@ RUN python -m pip install \
       -r /opt/ala-pianist-runtime/requirements.txt \
     && python - <<'PY'
 import platform
+import dm_control
+import dm_env_wrappers
+import mujoco
+import mujoco_utils
 import torch
 
 print("python", platform.python_version())
 print("torch", torch.__version__)
 print("torch_cuda", torch.version.cuda)
 print("torch_file", torch.__file__)
+print("mujoco", mujoco.__version__)
+print("dm_control", dm_control.__file__)
+print("mujoco_utils", mujoco_utils.__file__)
+print("dm_env_wrappers", dm_env_wrappers.__file__)
 
 if not torch.__version__.startswith("2.13.0"):
     raise SystemExit(f"Unexpected torch version: {torch.__version__}")

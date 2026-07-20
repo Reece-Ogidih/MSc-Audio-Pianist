@@ -3,11 +3,9 @@
 # This image intentionally contains dependencies only. Mount the repository at
 # /app and scratch/experiment storage at /workspace when running with Hare.
 #
-# Local environment used for pinning:
-#   Python 3.10.20, torch 2.13.0+cpu, numpy 2.2.6, mujoco 3.10.0.
-# The local PyTorch build is CPU-only, so the GPU base image must be verified on
-# the selected Hex node in Prompt 2 against the live NVIDIA driver.
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+# Local checkpoint environment used torch 2.13.0. Hex driver 570.124.06 reports
+# CUDA 12.8 support, so use a CUDA 12.6 runtime rather than a CUDA 13 build.
+FROM pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -37,8 +35,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/ala-pianist-runtime
 COPY requirements.txt /opt/ala-pianist-runtime/requirements.txt
-RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install -r /opt/ala-pianist-runtime/requirements.txt
+COPY torch-constraints.txt /opt/ala-pianist-runtime/torch-constraints.txt
+RUN python -m pip install \
+      --constraint /opt/ala-pianist-runtime/torch-constraints.txt \
+      -r /opt/ala-pianist-runtime/requirements.txt \
+    && python - <<'PY'
+import platform
+import torch
+
+print("python", platform.python_version())
+print("torch", torch.__version__)
+print("torch_cuda", torch.version.cuda)
+
+if not torch.__version__.startswith("2.13.0"):
+    raise SystemExit(f"Unexpected torch version: {torch.__version__}")
+if not str(torch.version.cuda).startswith("12.6"):
+    raise SystemExit(f"Unexpected torch CUDA runtime: {torch.version.cuda}")
+PY
 
 WORKDIR /app
 CMD ["bash"]

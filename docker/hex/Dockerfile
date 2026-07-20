@@ -8,6 +8,7 @@
 FROM pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    VIRTUAL_ENV=/opt/ala-pianist-venv \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     MUJOCO_GL=egl \
@@ -30,8 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libportaudio2 \
     libsndfile1 \
     portaudio19-dev \
+    python3-venv \
     wget \
     && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv --system-site-packages "${VIRTUAL_ENV}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 WORKDIR /opt/ala-pianist-runtime
 COPY requirements.txt /opt/ala-pianist-runtime/requirements.txt
@@ -46,11 +51,14 @@ import torch
 print("python", platform.python_version())
 print("torch", torch.__version__)
 print("torch_cuda", torch.version.cuda)
+print("torch_file", torch.__file__)
 
 if not torch.__version__.startswith("2.13.0"):
     raise SystemExit(f"Unexpected torch version: {torch.__version__}")
 if not str(torch.version.cuda).startswith("12.6"):
     raise SystemExit(f"Unexpected torch CUDA runtime: {torch.version.cuda}")
+if "ala-pianist-venv" in str(torch.__file__):
+    raise SystemExit(f"Torch was installed into the venv instead of inherited: {torch.__file__}")
 PY
 
 WORKDIR /app

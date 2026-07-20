@@ -14,7 +14,7 @@ from ala_pianist.music import (
     write_sequence_midi,
 )
 from ala_pianist.pipelines.pipeline1 import pipeline1_events_from_pitches, run_pipeline1
-from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
+from ala_pianist.rl import DroQPolicy, GeneralOneHandGoalEnv, GeneralRewardConfig
 
 
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
@@ -46,6 +46,7 @@ def evaluate_general_model(
     model_path: Path,
     pitches: list[int],
     *,
+    model_kind: str,
     seed: int,
     horizon_steps: int,
     action_mode: str,
@@ -54,7 +55,7 @@ def evaluate_general_model(
     reward_config: GeneralRewardConfig,
     timing_profile: str,
 ) -> dict:
-    model = SAC.load(model_path)
+    model = load_policy(model_path, model_kind=model_kind)
     midi_path = _write_sequence_midi(
         pitches,
         OUT_DIR / "eval_midi" / f"general_{timing_profile}_{'_'.join(map(str, pitches))}.mid",
@@ -97,6 +98,7 @@ def evaluate_general_model(
     wrong_pressed = [key for key in sorted(pressed_keys) if key not in target_keys]
     result = {
         "clip_pitches": pitches,
+        "model_kind": model_kind,
         "midi_path": str(midi_path),
         "target_keys": sorted(target_keys),
         "target_recall": target_hits / max(1, len(target_keys)),
@@ -120,6 +122,14 @@ def evaluate_general_model(
         target_vectors=target_vectors,
         pressed_vectors=pressed_vectors,
     )
+
+
+def load_policy(model_path: Path, *, model_kind: str):
+    if model_kind == "sb3_sac":
+        return SAC.load(model_path)
+    if model_kind == "droq":
+        return DroQPolicy.load(model_path)
+    raise ValueError(f"Unknown model kind {model_kind!r}.")
 
 
 def evaluate_zero(
@@ -308,12 +318,12 @@ def reward_config_from_profile(profile: str) -> GeneralRewardConfig:
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
-def parse_stage_model(raw: str) -> tuple[str, Path]:
+def parse_stage_model(raw: str, *, default_kind: str = "sb3_sac") -> tuple[str, Path, str]:
     if "=" in raw:
         label, path = raw.split("=", 1)
-        return label, Path(path)
+        return label, Path(path), default_kind
     path = Path(raw)
-    return path.stem, path
+    return path.stem, path, default_kind
 
 
 def _strict_outcome(
@@ -380,7 +390,9 @@ def main() -> None:
     global OUT_DIR
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", required=True)
+    parser.add_argument("--model-kind", default="sb3_sac", choices=["sb3_sac", "droq"])
     parser.add_argument("--compare-model-path", action="append", default=[])
+    parser.add_argument("--compare-droq-model-path", action="append", default=[])
     parser.add_argument("--output-dir", default=str(OUT_DIR))
     parser.add_argument("--seed", type=int, default=23)
     parser.add_argument("--horizon-steps", type=int, default=96)
@@ -413,8 +425,9 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     model_path = Path(args.model_path)
     reward_config = reward_config_from_profile(args.reward_profile)
-    stage_models = [("general_policy", model_path)]
-    stage_models.extend(parse_stage_model(raw) for raw in args.compare_model_path)
+    stage_models = [("general_policy", model_path, args.model_kind)]
+    stage_models.extend(parse_stage_model(raw, default_kind="sb3_sac") for raw in args.compare_model_path)
+    stage_models.extend(parse_stage_model(raw, default_kind="droq") for raw in args.compare_droq_model_path)
     hybrid = maybe_hybrid_controller(
         Path(args.dsharp_residual_model_path) if args.dsharp_residual_model_path else None,
         Path(args.d5_residual_model_path) if args.d5_residual_model_path else None,
@@ -443,10 +456,11 @@ def main() -> None:
                 build_library=True,
             ),
         }
-        for label, path in stage_models:
+        for label, path, model_kind in stage_models:
             sequence_summary[label] = evaluate_general_model(
                 path,
                 pitches,
+                model_kind=model_kind,
                 seed=args.seed,
                 horizon_steps=args.horizon_steps,
                 action_mode=args.action_mode,
@@ -466,6 +480,7 @@ def main() -> None:
 
     summary_path = OUT_DIR / "general_one_hand_eval_summary.json"
     payload = {
+        "model_kind": args.model_kind,
         "action_mode": args.action_mode,
         "action_repeat": args.action_repeat,
         "ramp_steps": args.ramp_steps,

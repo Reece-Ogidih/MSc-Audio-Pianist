@@ -1,13 +1,16 @@
 import argparse
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
+import sys
 import time
 
 import numpy as np
 import torch
 
 from ala_pianist.rl import DroQAgent, DroQConfig, GeneralOneHandGoalEnv, GeneralRewardConfig, ReplayBuffer
+from ala_pianist.rl import load_droq_checkpoint, replay_buffer_from_checkpoint, restore_rng_state
 from train_general_one_hand_policy import (
     parse_midi_pitches,
     parse_pitch_sampling_weights,
@@ -17,8 +20,19 @@ from train_general_one_hand_policy import (
 )
 
 
-ROOT = Path("/home/reece_dev/msc-audio-pianist")
-OUT_DIR = ROOT / "experiments" / "general_one_hand" / "droq"
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except AttributeError:
+    pass
+
+ROOT = Path(os.environ.get("ALA_PIANIST_ROOT", Path(__file__).resolve().parents[1]))
+OUT_DIR = Path(
+    os.environ.get(
+        "ALA_PIANIST_DROQ_OUTPUT_DIR",
+        ROOT / "experiments" / "general_one_hand" / "droq",
+    )
+)
 
 
 def evaluate_agent(
@@ -140,9 +154,69 @@ def _safe_stage_name(value: str | None) -> str:
     return value or "droq_general_one_hand"
 
 
+def _checkpoint_step(payload: dict) -> int:
+    return int(payload.get("extra", {}).get("step", 0))
+
+
+def _validate_resume_config(
+    *,
+    payload: dict,
+    config: DroQConfig,
+    env: GeneralOneHandGoalEnv,
+    args,
+) -> None:
+    checkpoint_config = payload.get("config", {})
+    if int(checkpoint_config.get("observation_dim", -1)) != config.observation_dim:
+        raise ValueError(
+            "Resume checkpoint observation_dim does not match current env: "
+            f"{checkpoint_config.get('observation_dim')} vs {config.observation_dim}."
+        )
+    if int(checkpoint_config.get("action_dim", -1)) != config.action_dim:
+        raise ValueError(
+            "Resume checkpoint action_dim does not match current env: "
+            f"{checkpoint_config.get('action_dim')} vs {config.action_dim}."
+        )
+    warnings = []
+    extra = payload.get("extra", {})
+    expected = {
+        "lookahead": args.lookahead,
+        "action_mode": args.action_mode,
+        "action_repeat": args.action_repeat,
+        "reward_profile": args.reward_profile,
+        "sequence_timing_profile": args.sequence_timing_profile,
+    }
+    for key, value in expected.items():
+        saved_value = extra.get(key)
+        if saved_value is not None and saved_value != value:
+            warnings.append(f"{key}: checkpoint={saved_value!r} current={value!r}")
+    if tuple(env.native_goal_shape) != ((int(args.lookahead) + 1) * 89,):
+        raise ValueError("Current env native goal shape is inconsistent with requested lookahead.")
+    for warning in warnings:
+        print(f"resume_warning={warning}")
+
+
+def validate_training_mode_args(args) -> None:
+    if args.resume_checkpoint is not None and args.additional_timesteps is None:
+        raise ValueError("--resume-checkpoint requires --additional-timesteps.")
+    if args.resume_checkpoint is None and args.additional_timesteps is not None:
+        raise ValueError("--additional-timesteps requires --resume-checkpoint.")
+    if args.resume_checkpoint is not None and args.timesteps is not None:
+        raise ValueError("Use --additional-timesteps, not --timesteps, when resuming.")
+    if args.resume_checkpoint is None and args.timesteps is None:
+        args.timesteps = 5000
+
+
+def validate_device(device: str) -> None:
+    if str(device).startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"Requested --device {device!r}, but torch.cuda.is_available() is False. "
+            "Refusing to silently fall back to CPU."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--timesteps", type=int, default=5000)
+    parser.add_argument("--timesteps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--lookahead", type=int, default=1)
     parser.add_argument("--midi-min", type=int, default=73)
@@ -196,8 +270,15 @@ def main() -> None:
     parser.add_argument("--alpha", type=float, default=0.2)
     parser.add_argument("--fixed-alpha", action="store_true")
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--resume-checkpoint", default=None)
+    parser.add_argument("--additional-timesteps", type=int, default=None)
+    parser.add_argument("--resume-reset-replay-buffer", action="store_true")
+    parser.add_argument("--resume-reset-optimizers", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    validate_training_mode_args(args)
+    validate_device(args.device)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -229,38 +310,75 @@ def main() -> None:
     if args.dry_run:
         return
 
+    checkpoint_payload = (
+        load_droq_checkpoint(args.resume_checkpoint, device=args.device)
+        if args.resume_checkpoint is not None
+        else None
+    )
+    checkpoint_config = checkpoint_payload.get("config", {}) if checkpoint_payload else {}
     config = DroQConfig(
         observation_dim=int(env.observation_space.shape[0]),
         action_dim=int(env.action_space.shape[0]),
-        hidden_dim=args.hidden_dim,
-        critic_ensemble_size=args.critic_ensemble_size,
-        critic_dropout=args.critic_dropout,
-        actor_lr=args.actor_lr,
-        critic_lr=args.critic_lr,
-        alpha_lr=args.alpha_lr,
-        gamma=args.gamma,
-        tau=args.tau,
-        alpha=args.alpha,
-        auto_alpha=not args.fixed_alpha,
+        hidden_dim=int(checkpoint_config.get("hidden_dim", args.hidden_dim)),
+        critic_ensemble_size=int(
+            checkpoint_config.get("critic_ensemble_size", args.critic_ensemble_size)
+        ),
+        critic_dropout=float(checkpoint_config.get("critic_dropout", args.critic_dropout)),
+        actor_lr=float(checkpoint_config.get("actor_lr", args.actor_lr)),
+        critic_lr=float(checkpoint_config.get("critic_lr", args.critic_lr)),
+        alpha_lr=float(checkpoint_config.get("alpha_lr", args.alpha_lr)),
+        gamma=float(checkpoint_config.get("gamma", args.gamma)),
+        tau=float(checkpoint_config.get("tau", args.tau)),
+        alpha=float(checkpoint_config.get("alpha", args.alpha)),
+        auto_alpha=bool(checkpoint_config.get("auto_alpha", not args.fixed_alpha)),
+        target_entropy=checkpoint_config.get("target_entropy", None),
         batch_size=args.batch_size,
         utd_ratio=args.utd_ratio,
-        buffer_size=args.buffer_size,
+        buffer_size=int(checkpoint_config.get("buffer_size", args.buffer_size)),
         device=args.device,
     )
-    agent = DroQAgent(config)
-    replay_buffer = ReplayBuffer(config.observation_dim, config.action_dim, config.buffer_size)
+    start_step = 0
+    total_steps_to_run = args.timesteps
+    if checkpoint_payload is None:
+        agent = DroQAgent(config)
+        replay_buffer = ReplayBuffer(config.observation_dim, config.action_dim, config.buffer_size)
+    else:
+        _validate_resume_config(payload=checkpoint_payload, config=config, env=env, args=args)
+        agent = DroQAgent.load(
+            args.resume_checkpoint,
+            device=args.device,
+            reset_optimizers=args.resume_reset_optimizers,
+        )
+        if args.resume_reset_replay_buffer:
+            replay_buffer = ReplayBuffer(config.observation_dim, config.action_dim, config.buffer_size)
+        else:
+            replay_buffer = replay_buffer_from_checkpoint(
+                checkpoint_payload,
+                observation_dim=config.observation_dim,
+                action_dim=config.action_dim,
+                fallback_capacity=config.buffer_size,
+            )
+        restore_rng_state(checkpoint_payload.get("rng_state"))
+        start_step = _checkpoint_step(checkpoint_payload)
+        total_steps_to_run = int(args.additional_timesteps)
+        print(f"resume_checkpoint={args.resume_checkpoint}")
+        print(f"resume_start_step={start_step}")
+        print(f"resume_replay_buffer_size={replay_buffer.size}")
+        print(f"resume_reset_replay_buffer={args.resume_reset_replay_buffer}")
+        print(f"resume_reset_optimizers={args.resume_reset_optimizers}")
 
     run_name = (
         f"{_safe_stage_name(args.stage_name)}_droq_{args.curriculum}_"
         f"lookahead{args.lookahead}_{args.action_mode}x{args.action_repeat}_"
-        f"{args.reward_profile}_seed{args.seed}_{args.timesteps}"
+        f"{args.reward_profile}_seed{args.seed}_{start_step + total_steps_to_run}"
     )
     checkpoint_dir = output_dir / "checkpoints" / run_name
     start = time.time()
     losses: list[dict[str, float]] = []
     episode_return = 0.0
-    for step in range(1, args.timesteps + 1):
-        if step <= args.learning_starts:
+    for local_step in range(1, total_steps_to_run + 1):
+        global_step = start_step + local_step
+        if replay_buffer.size < args.learning_starts:
             action = env.action_space.sample().astype(np.float32)
         else:
             action = agent.act(observation, deterministic=False)
@@ -270,7 +388,7 @@ def main() -> None:
         episode_return += float(reward)
         observation = next_observation
 
-        if replay_buffer.size >= args.batch_size and step > args.learning_starts:
+        if replay_buffer.size >= args.batch_size and replay_buffer.size > args.learning_starts:
             for _ in range(args.utd_ratio):
                 losses.append(
                     agent.update(
@@ -282,18 +400,39 @@ def main() -> None:
             observation, info = env.reset()
             episode_return = 0.0
 
-        if args.checkpoint_freq > 0 and step % args.checkpoint_freq == 0:
-            checkpoint_path = checkpoint_dir / f"checkpoint_{step}_steps.pt"
+        if args.checkpoint_freq > 0 and global_step % args.checkpoint_freq == 0:
+            checkpoint_path = checkpoint_dir / f"checkpoint_{global_step}_steps.pt"
             agent.save(
                 checkpoint_path,
                 replay_buffer=replay_buffer,
-                extra={"step": step, "episode_return": episode_return},
+                extra={
+                    "step": global_step,
+                    "episode_return": episode_return,
+                    "lookahead": args.lookahead,
+                    "action_mode": args.action_mode,
+                    "action_repeat": args.action_repeat,
+                    "reward_profile": args.reward_profile,
+                    "sequence_timing_profile": args.sequence_timing_profile,
+                },
             )
             print(f"checkpoint_path={checkpoint_path}")
 
     runtime_seconds = time.time() - start
     model_path = output_dir / f"{run_name}.pt"
-    agent.save(model_path, replay_buffer=replay_buffer, extra={"step": args.timesteps})
+    final_step = start_step + total_steps_to_run
+    agent.save(
+        model_path,
+        replay_buffer=replay_buffer,
+        extra={
+            "step": final_step,
+            "episode_return": episode_return,
+            "lookahead": args.lookahead,
+            "action_mode": args.action_mode,
+            "action_repeat": args.action_repeat,
+            "reward_profile": args.reward_profile,
+            "sequence_timing_profile": args.sequence_timing_profile,
+        },
+    )
     config_path = output_dir / f"{run_name}_config.json"
     config_payload = {
         "droq_config": asdict(config),
@@ -314,7 +453,12 @@ def main() -> None:
         "model_path": str(model_path),
         "config_path": str(config_path),
         "runtime_seconds": runtime_seconds,
-        "timesteps": args.timesteps,
+        "timesteps": total_steps_to_run,
+        "start_step": start_step,
+        "final_step": final_step,
+        "resume_checkpoint": args.resume_checkpoint,
+        "resume_reset_replay_buffer": args.resume_reset_replay_buffer,
+        "resume_reset_optimizers": args.resume_reset_optimizers,
         "seed": args.seed,
         "lookahead": args.lookahead,
         "curriculum": args.curriculum,

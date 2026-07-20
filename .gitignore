@@ -54,3 +54,6 @@ logs/
 .DS_Store
 .idea/
 .vscode/
+
+
+hex_docs/

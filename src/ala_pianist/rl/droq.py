@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import random
 from typing import Any
 
 import numpy as np
@@ -89,6 +90,10 @@ class ReplayBuffer:
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         size = int(state["size"])
+        if size > self.capacity:
+            raise ValueError(
+                f"Replay buffer state size {size} exceeds buffer capacity {self.capacity}."
+            )
         self.position = int(state["position"])
         self.size = size
         self.observations[:size] = state["observations"]
@@ -306,6 +311,7 @@ class DroQAgent:
             "log_alpha": self.log_alpha.detach().cpu(),
             "alpha_optimizer": self.alpha_optimizer.state_dict() if self.alpha_optimizer else None,
             "extra": extra or {},
+            "rng_state": rng_state_dict(),
         }
         if replay_buffer is not None:
             payload["replay_buffer"] = replay_buffer.state_dict()
@@ -313,11 +319,14 @@ class DroQAgent:
         return path
 
     @classmethod
-    def load(cls, path: str | Path, *, device: str | None = None) -> "DroQAgent":
-        try:
-            payload = torch.load(Path(path), map_location=device or "cpu", weights_only=False)
-        except TypeError:
-            payload = torch.load(Path(path), map_location=device or "cpu")
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        device: str | None = None,
+        reset_optimizers: bool = False,
+    ) -> "DroQAgent":
+        payload = load_droq_checkpoint(path, device=device)
         config_payload = dict(payload["config"])
         if device is not None:
             config_payload["device"] = device
@@ -325,12 +334,16 @@ class DroQAgent:
         agent.actor.load_state_dict(payload["actor"])
         agent.critics.load_state_dict(payload["critics"])
         agent.target_critics.load_state_dict(payload["target_critics"])
-        if "actor_optimizer" in payload:
+        if not reset_optimizers and "actor_optimizer" in payload:
             agent.actor_optimizer.load_state_dict(payload["actor_optimizer"])
-        if "critic_optimizer" in payload:
+        if not reset_optimizers and "critic_optimizer" in payload:
             agent.critic_optimizer.load_state_dict(payload["critic_optimizer"])
         agent.log_alpha.data.copy_(payload["log_alpha"].to(agent.device))
-        if agent.alpha_optimizer is not None and payload.get("alpha_optimizer") is not None:
+        if (
+            not reset_optimizers
+            and agent.alpha_optimizer is not None
+            and payload.get("alpha_optimizer") is not None
+        ):
             agent.alpha_optimizer.load_state_dict(payload["alpha_optimizer"])
         return agent
 
@@ -347,3 +360,50 @@ class DroQPolicy:
 
     def predict(self, observation, deterministic: bool = True):
         return self.agent.act(observation, deterministic=deterministic), None
+
+
+def load_droq_checkpoint(path: str | Path, *, device: str | None = None) -> dict[str, Any]:
+    """Load a local DroQ checkpoint payload.
+
+    DroQ checkpoints may include NumPy replay-buffer arrays, so current PyTorch
+    versions need ``weights_only=False`` for trusted local files.
+    """
+
+    try:
+        return torch.load(Path(path), map_location=device or "cpu", weights_only=False)
+    except TypeError:
+        return torch.load(Path(path), map_location=device or "cpu")
+
+
+def replay_buffer_from_checkpoint(
+    payload: dict[str, Any],
+    *,
+    observation_dim: int,
+    action_dim: int,
+    fallback_capacity: int,
+) -> ReplayBuffer:
+    state = payload.get("replay_buffer")
+    capacity = int(state.get("capacity", fallback_capacity)) if state is not None else int(fallback_capacity)
+    replay_buffer = ReplayBuffer(observation_dim, action_dim, capacity)
+    if state is not None:
+        replay_buffer.load_state_dict(state)
+    return replay_buffer
+
+
+def rng_state_dict() -> dict[str, Any]:
+    return {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.random.get_rng_state(),
+    }
+
+
+def restore_rng_state(state: dict[str, Any] | None) -> None:
+    if not state:
+        return
+    if "python" in state:
+        random.setstate(state["python"])
+    if "numpy" in state:
+        np.random.set_state(state["numpy"])
+    if "torch" in state:
+        torch.random.set_rng_state(state["torch"])

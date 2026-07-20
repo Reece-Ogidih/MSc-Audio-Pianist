@@ -8,6 +8,9 @@ from ala_pianist.rl.droq import (
     DroQPolicy,
     ReplayBuffer,
     SquashedGaussianActor,
+    load_droq_checkpoint,
+    replay_buffer_from_checkpoint,
+    restore_rng_state,
 )
 from ala_pianist.rl.keyset_env import KEYSET_MIDI, KeysetPianoGymEnv, make_keyset_observation
 from ala_pianist.rl.residual_env import (
@@ -42,6 +45,9 @@ __all__ = [
     "get_dirty_dsharp5_base_action",
     "SingleNotePianoGymEnv",
     "SquashedGaussianActor",
+    "load_droq_checkpoint",
     "make_keyset_observation",
+    "replay_buffer_from_checkpoint",
+    "restore_rng_state",
     "write_single_note_rl_midi",
 ]

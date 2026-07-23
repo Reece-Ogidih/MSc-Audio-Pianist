@@ -1,0 +1,29 @@
+{
+  "stage_name": "droq_cleanliness_sensitive_v1_seed13_300k",
+  "algorithm": "droq",
+  "seed": 13,
+  "timesteps": 300000,
+  "lookahead": 1,
+  "curriculum": "sequence_cleanup",
+  "sequence_pitches": [[73], [74], [75], [73, 75], [75, 73], [74, 75]],
+  "sequence_sampling_weights": [0.22, 0.22, 0.22, 0.14, 0.10, 0.10],
+  "sequence_timing_profile": "aligned",
+  "action_mode": "direct",
+  "action_repeat": 1,
+  "reward_profile": "transition_cleanup_sensitive_v1",
+  "checkpoint_freq": 50000,
+  "utd_ratio": 4,
+  "batch_size": 256,
+  "fresh_start_required": true,
+  "reward_parameters": {
+    "unintended_soft_threshold": 0.2,
+    "press_threshold": 0.5,
+    "unintended_travel_weight": 0.75,
+    "unintended_near_press_weight": 0.35,
+    "unintended_press_weight": 1.0,
+    "late_release_weight": 0.75,
+    "early_activation_weight": 0.5,
+    "duration_weight": 0.25
+  },
+  "evaluation_steps": [50000, 100000, 200000, 300000]
+}

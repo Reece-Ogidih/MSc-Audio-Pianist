@@ -17,6 +17,7 @@ from robopianist.suite.tasks.piano_with_one_shadow_hand import PianoWithOneShado
 
 from ala_pianist.music import CurriculumClip, write_curriculum_midi
 from ala_pianist.music.sequence_generation import sequence_timing_from_profile
+from ala_pianist.evaluation.unintended import unintended_penalty_components
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,14 @@ class GeneralRewardConfig:
     release_previous_key_weight: float = 0.0
     transition_stray_key_weight: float = 0.0
     transition_stray_pressed_weight: float = 0.0
+    press_threshold: float = 0.5
+    unintended_soft_threshold: float = 0.2
+    unintended_travel_weight: float = 0.0
+    unintended_near_press_weight: float = 0.0
+    unintended_press_weight: float = 0.0
+    late_release_weight: float = 0.0
+    early_activation_weight: float = 0.0
+    duration_weight: float = 0.0
 
 
 class GeneralOneHandGoalEnv(gym.Env):
@@ -125,6 +134,8 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._weighted_clip_indices: list[int] = []
         self._weighted_sequence_indices: list[int] = []
         self._last_nonempty_target_keys: tuple[int, ...] = ()
+        self._reward_previous_target_keys: tuple[int, ...] = ()
+        self._reward_future_target_keys: tuple[int, ...] = ()
 
         self.curriculum_clip: CurriculumClip | None = None
         if midi_path is None:
@@ -180,6 +191,8 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._previous_normalized_action = np.zeros(22, dtype=np.float32)
         self._previous_policy_action = np.zeros(22, dtype=np.float32)
         self._last_nonempty_target_keys = ()
+        self._reward_previous_target_keys = ()
+        self._reward_future_target_keys = ()
         if self._regenerate_curriculum_on_reset:
             if seed is not None and seed != self._last_reset_seed:
                 self.seed_value = int(seed)
@@ -267,6 +280,15 @@ class GeneralOneHandGoalEnv(gym.Env):
         goal_frame = self._current_goal_frame()
         return [int(key) for key in np.flatnonzero(goal_frame[:-1] > 0.5)]
 
+    def future_target_keys(self) -> list[int]:
+        future = []
+        for frame in self._goal_frames()[1:]:
+            future.extend(int(key) for key in np.flatnonzero(frame[:-1] > 0.5))
+        return sorted(set(future))
+
+    def previous_target_keys(self) -> list[int]:
+        return [int(key) for key in self._last_nonempty_target_keys]
+
     def current_pressed_keys(self) -> list[int]:
         return [int(key) for key in np.flatnonzero(self.task.piano.activation)]
 
@@ -345,8 +367,11 @@ class GeneralOneHandGoalEnv(gym.Env):
         return tuple(names), np.concatenate(parts).astype(np.float32)
 
     def _current_goal_frame(self) -> np.ndarray:
+        return self._goal_frames()[0]
+
+    def _goal_frames(self) -> np.ndarray:
         goal = np.asarray(self._last_timestep.observation["goal"], dtype=np.float32)
-        return goal.reshape(self.lookahead + 1, self.task.piano.n_keys + 1)[0]
+        return goal.reshape(self.lookahead + 1, self.task.piano.n_keys + 1)
 
     def _phase(self) -> float:
         return min(1.0, self._step_count / max(1, self.horizon_steps))
@@ -375,6 +400,17 @@ class GeneralOneHandGoalEnv(gym.Env):
         csharp_dsharp_key54_pressed = 1.0 if 52 in target_keys and 54 in self.current_pressed_keys() else 0.0
         dsharp_csharp_key52_pressed = 1.0 if 54 in target_keys and 52 in self.current_pressed_keys() else 0.0
         previous_target_keys = self._last_nonempty_target_keys
+        future_target_keys = self.future_target_keys()
+        self._reward_previous_target_keys = tuple(int(key) for key in previous_target_keys)
+        self._reward_future_target_keys = tuple(int(key) for key in future_target_keys)
+        unintended_sensitive = unintended_penalty_components(
+            states,
+            current_target_keys=target_keys,
+            previous_target_keys=previous_target_keys,
+            future_target_keys=future_target_keys,
+            soft_threshold=self.reward_config.unintended_soft_threshold,
+            press_threshold=self.reward_config.press_threshold,
+        )
         release_gate = 1.0 if not target_keys and previous_target_keys else 0.0
         release_previous_key_state = 0.0
         if release_gate:
@@ -410,6 +446,7 @@ class GeneralOneHandGoalEnv(gym.Env):
             "release_previous_key_state": release_previous_key_state,
             "transition_stray_key_state": transition_stray_key_state,
             "transition_stray_pressed_count": transition_stray_pressed_count,
+            **unintended_sensitive,
         }
 
     def _combine_reward_components(self, components: dict[str, float]) -> float:
@@ -434,6 +471,12 @@ class GeneralOneHandGoalEnv(gym.Env):
             - cfg.release_previous_key_weight * components["release_gate"] * components["release_previous_key_state"]
             - cfg.transition_stray_key_weight * components["transition_stray_key_state"]
             - cfg.transition_stray_pressed_weight * components["transition_stray_pressed_count"]
+            - cfg.unintended_travel_weight * components["unintended_continuous_travel"]
+            - cfg.unintended_near_press_weight * components["unintended_near_press_barrier"]
+            - cfg.unintended_press_weight * components["unintended_pressed_event_count"]
+            - cfg.late_release_weight * components["late_release_travel"]
+            - cfg.early_activation_weight * components["early_activation_travel"]
+            - cfg.duration_weight * components["unintended_integrated_duration"]
         )
 
     def _fingering_score(self, target_keys: list[int]) -> float:
@@ -478,6 +521,8 @@ class GeneralOneHandGoalEnv(gym.Env):
             "curriculum_pitches": tuple(self.curriculum_clip.pitches if self.curriculum_clip else ()),
             "curriculum_key_indices": tuple(self.curriculum_clip.key_indices if self.curriculum_clip else ()),
             "target_keys": target_keys,
+            "previous_target_keys": tuple(self._reward_previous_target_keys),
+            "future_target_keys": tuple(self._reward_future_target_keys),
             "pressed_keys": pressed_keys,
             "target_key_state": float(target_state),
             "max_unintended_key_state": float(max_unintended),

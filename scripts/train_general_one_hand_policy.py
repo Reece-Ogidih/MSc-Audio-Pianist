@@ -167,6 +167,37 @@ def reward_config_from_profile(profile: str, override: str | None = None) -> Gen
             transition_stray_key_weight=3.0,
             transition_stray_pressed_weight=1.5,
         )
+    if profile == "transition_cleanup_sensitive_v1":
+        return GeneralRewardConfig(
+            target_travel_weight=4.0,
+            wrong_travel_weight=0.15,
+            wrong_pressed_weight=0.20,
+            action_weight=0.002,
+            smoothness_weight=0.001,
+            target_activation_bonus=3.0,
+            target_activation_threshold=0.9,
+            high_unintended_weight=0.35,
+            high_unintended_threshold=0.75,
+            cleanup_gate_threshold=0.75,
+            gated_unintended_weight=1.0,
+            gated_wrong_pressed_weight=0.75,
+            nearby_wrong_key_weight=0.75,
+            csharp_dsharp_key54_weight=2.0,
+            csharp_dsharp_pressed_weight=1.0,
+            dsharp_csharp_key52_weight=1.0,
+            dsharp_csharp_pressed_weight=0.5,
+            release_previous_key_weight=0.5,
+            transition_stray_key_weight=1.0,
+            transition_stray_pressed_weight=0.75,
+            unintended_soft_threshold=0.20,
+            press_threshold=0.50,
+            unintended_travel_weight=0.75,
+            unintended_near_press_weight=0.35,
+            unintended_press_weight=1.0,
+            late_release_weight=0.75,
+            early_activation_weight=0.50,
+            duration_weight=0.25,
+        )
     raise ValueError(f"Unknown reward profile {profile!r}.")
 
 
@@ -287,6 +318,7 @@ def main() -> None:
             "gated_cleanliness",
             "anti_coupling",
             "transition_cleanup",
+            "transition_cleanup_sensitive_v1",
         ],
     )
     parser.add_argument("--output-dir", default=str(OUT_DIR))

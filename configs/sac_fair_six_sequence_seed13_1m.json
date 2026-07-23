@@ -1,0 +1,30 @@
+{
+  "stage_name": "sac_fair_six_sequence_seed13_1m",
+  "algorithm": "sb3_sac",
+  "seed": 13,
+  "timesteps": 1000000,
+  "lookahead": 1,
+  "curriculum": "sequence_cleanup",
+  "sequence_pitches": [[73], [74], [75], [73, 75], [75, 73], [74, 75]],
+  "sequence_sampling_weights": [0.22, 0.22, 0.22, 0.14, 0.10, 0.10],
+  "sequence_timing_profile": "aligned",
+  "action_mode": "direct",
+  "action_repeat": 1,
+  "reward_profile": "transition_cleanup",
+  "checkpoint_freq": 100000,
+  "expected_observation_dim": 301,
+  "expected_action_dim": 22,
+  "sac_hyperparameters": {
+    "policy": "MlpPolicy",
+    "learning_rate": 0.0003,
+    "batch_size": 64,
+    "gamma": 0.95,
+    "train_freq": 1,
+    "gradient_steps": 1,
+    "learning_starts": 1000,
+    "buffer_size": 1000000,
+    "tau": "stable-baselines3 default",
+    "ent_coef": "auto default",
+    "actor_critic_architecture": "stable-baselines3 SAC MlpPolicy default"
+  }
+}

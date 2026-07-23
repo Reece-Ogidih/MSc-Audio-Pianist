@@ -246,6 +246,7 @@ def main() -> None:
             "gated_cleanliness",
             "anti_coupling",
             "transition_cleanup",
+            "transition_cleanup_sensitive_v1",
         ],
     )
     parser.add_argument("--output-dir", default=str(OUT_DIR))
@@ -375,6 +376,9 @@ def main() -> None:
     checkpoint_dir = output_dir / "checkpoints" / run_name
     start = time.time()
     losses: list[dict[str, float]] = []
+    reward_component_sums: dict[str, float] = {}
+    reward_component_max: dict[str, float] = {}
+    reward_component_count = 0
     episode_return = 0.0
     for local_step in range(1, total_steps_to_run + 1):
         global_step = start_step + local_step
@@ -383,6 +387,12 @@ def main() -> None:
         else:
             action = agent.act(observation, deterministic=False)
         next_observation, reward, terminated, truncated, info = env.step(action)
+        components = info.get("reward_components", {})
+        reward_component_count += 1
+        for key, value in components.items():
+            numeric = float(value)
+            reward_component_sums[key] = reward_component_sums.get(key, 0.0) + numeric
+            reward_component_max[key] = max(reward_component_max.get(key, numeric), numeric)
         done = bool(terminated or truncated)
         replay_buffer.add(observation, action, float(reward), next_observation, done)
         episode_return += float(reward)
@@ -449,6 +459,13 @@ def main() -> None:
         key: float(np.mean([item[key] for item in recent_losses])) if recent_losses else None
         for key in ("critic_loss", "actor_loss", "alpha_loss", "alpha", "mean_q")
     }
+    reward_component_summary = {
+        key: {
+            "mean": float(value / max(1, reward_component_count)),
+            "max": float(reward_component_max.get(key, 0.0)),
+        }
+        for key, value in sorted(reward_component_sums.items())
+    }
     summary = {
         "model_path": str(model_path),
         "config_path": str(config_path),
@@ -470,6 +487,7 @@ def main() -> None:
         "reward_profile": args.reward_profile,
         "checkpoint_freq": args.checkpoint_freq,
         "loss_summary": loss_summary,
+        "reward_component_summary": reward_component_summary,
         "deterministic_eval": deterministic_eval,
         "stochastic_eval": stochastic_eval,
     }
@@ -481,6 +499,7 @@ def main() -> None:
     print(f"summary_path={summary_path}")
     print(f"runtime_seconds={runtime_seconds:.2f}")
     print(f"loss_summary={loss_summary}")
+    print(f"reward_component_summary={reward_component_summary}")
     print(
         "deterministic "
         f"mean_target={deterministic_eval['mean_max_target_key_state']:.6f} "

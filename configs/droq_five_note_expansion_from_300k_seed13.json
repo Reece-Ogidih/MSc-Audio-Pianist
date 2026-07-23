@@ -1,0 +1,53 @@
+{
+  "stage_name": "droq_five_note_expansion_from_300k_seed13",
+  "algorithm": "droq",
+  "seed": 13,
+  "resume_checkpoint_required": true,
+  "resume_global_step": 300000,
+  "additional_timesteps": 700000,
+  "target_final_global_step": 1000000,
+  "lookahead": 1,
+  "curriculum": "sequence_cleanup",
+  "sequence_timing_profile": "aligned",
+  "action_mode": "direct",
+  "action_repeat": 1,
+  "reward_profile": "transition_cleanup",
+  "checkpoint_freq": 100000,
+  "utd_ratio": 4,
+  "batch_size": 256,
+  "midi_range": {
+    "midi_min": 72,
+    "midi_max": 76,
+    "notes": {
+      "72": "C5",
+      "73": "C#5",
+      "74": "D5",
+      "75": "D#5",
+      "76": "E5"
+    }
+  },
+  "phases": [
+    {
+      "name": "phase1_boundary_single_anchors",
+      "start_step": 300000,
+      "end_step": 500000,
+      "sequences": [[73], [74], [75], [73, 75], [75, 73], [74, 75], [72], [76]],
+      "weights": [0.18, 0.18, 0.18, 0.12, 0.10, 0.10, 0.07, 0.07]
+    },
+    {
+      "name": "phase2_boundary_transitions",
+      "start_step": 500000,
+      "end_step": 800000,
+      "sequences": [[73], [74], [75], [72], [76], [73, 75], [75, 73], [74, 75], [72, 73], [73, 72], [75, 76], [76, 75]],
+      "weights": [0.12, 0.12, 0.12, 0.08, 0.08, 0.10, 0.08, 0.08, 0.07, 0.07, 0.04, 0.04]
+    },
+    {
+      "name": "phase3_short_compositions",
+      "start_step": 800000,
+      "end_step": 1000000,
+      "sequences": [[73], [74], [75], [72], [76], [73, 75], [75, 73], [74, 75], [72, 73], [73, 72], [75, 76], [76, 75], [72, 73, 74], [74, 75, 76], [72, 73, 74, 75, 76], [76, 75, 74, 73, 72]],
+      "weights": [0.10, 0.10, 0.10, 0.07, 0.07, 0.08, 0.07, 0.07, 0.06, 0.06, 0.04, 0.04, 0.04, 0.04, 0.03, 0.03]
+    }
+  ],
+  "evaluation_sequences": [[72], [73], [74], [75], [76], [73, 75], [75, 73], [74, 75], [72, 73], [73, 72], [75, 76], [76, 75], [72, 74], [74, 76], [72, 73, 74], [74, 75, 76], [72, 73, 74, 75, 76], [76, 75, 74, 73, 72]]
+}

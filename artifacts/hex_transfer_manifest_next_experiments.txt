@@ -1,0 +1,55 @@
+Hex next-experiment transfer manifest
+=====================================
+
+Required Git commit on Hex:
+  Use the final reported commit for this change set; verify with git rev-parse HEAD after pulling.
+
+Experiment A: Fresh SAC 1M fair control
+  Input checkpoint: none
+  Config: configs/sac_fair_six_sequence_seed13_1m.json
+  Launcher: scripts/hex/run_sac_fair_1m.sh
+
+Experiment B: Fresh DroQ 300k cleanliness pilot
+  Input checkpoint: none
+  Config: configs/droq_cleanliness_sensitive_v1_seed13_300k.json
+  Launcher: scripts/hex/run_droq_cleanliness_300k.sh
+
+Experiment C: Five-note DroQ expansion
+  Input checkpoint required:
+    checkpoint_300000_steps.pt
+  Expected SHA-256:
+    f1bb6a62804b173d07f897318f9e0381294560cbb82d43a9e03a3a0727bfe390
+  Config:
+    configs/droq_five_note_expansion_from_300k_seed13.json
+  Launcher:
+    scripts/hex/run_droq_five_note_expansion.sh
+
+Docker image requirements:
+  PyTorch 2.13.0 CUDA 12.6 base image
+  RoboPianist runtime dependencies from docker/hex/requirements.txt
+  Repository mounted at /app
+  Scratch mounted at /workspace
+
+Home directory files:
+  repository
+  third_party/robopianist
+  RoboPianist soundfont
+
+Scratch files:
+  incoming/checkpoint_300000_steps.pt for Experiment C
+  runs/<run-name>/ output directories
+  logs/checkpoints/replay buffers/evaluation artifacts
+
+Smoke:
+  scripts/hex/verify_hex_inputs.sh
+  scripts/hex/smoke_test_all_hex_jobs.sh
+
+Monitoring:
+  hare me
+  hare usage
+  hare ps -a
+  hare logs -n 120 <run-name>
+  nvidia-smi
+
+Collection:
+  scripts/hex/collect_hex_outputs.sh

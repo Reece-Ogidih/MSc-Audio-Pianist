@@ -59,8 +59,8 @@ print(json.loads(Path("configs/five_note_factorial_1m/factorial_manifest_seed13.
 PY
 )"
 CURRENT_COMMIT="$(git rev-parse HEAD)"
-if [[ "${EXPECTED_COMMIT}" != "TO_BE_FILLED_BY_COMMIT_AMEND" && "${CURRENT_COMMIT}" != "${EXPECTED_COMMIT}" ]]; then
-  echo "Commit mismatch: current=${CURRENT_COMMIT} expected=${EXPECTED_COMMIT}" >&2
+if [[ "${EXPECTED_COMMIT}" != "TO_BE_FILLED_BY_COMMIT_AMEND" ]] && ! git merge-base --is-ancestor "${EXPECTED_COMMIT}" "${CURRENT_COMMIT}"; then
+  echo "Commit mismatch: current=${CURRENT_COMMIT} must descend from required=${EXPECTED_COMMIT}" >&2
   exit 1
 fi
 

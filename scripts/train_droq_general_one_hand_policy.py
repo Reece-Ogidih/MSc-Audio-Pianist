@@ -214,6 +214,12 @@ def validate_device(device: str) -> None:
         )
 
 
+def parse_checkpoint_steps(raw: str | None) -> set[int]:
+    if raw is None or raw.strip() == "":
+        return set()
+    return {int(part.strip()) for part in raw.split(",") if part.strip()}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timesteps", type=int, default=None)
@@ -256,6 +262,9 @@ def main() -> None:
     parser.add_argument("--ramp-steps", type=int, default=1)
     parser.add_argument("--stage-name", default=None)
     parser.add_argument("--checkpoint-freq", type=int, default=0)
+    parser.add_argument("--lightweight-checkpoint-freq", type=int, default=0)
+    parser.add_argument("--full-checkpoint-steps", default="")
+    parser.add_argument("--rolling-full-checkpoint", action="store_true")
     parser.add_argument("--buffer-size", type=int, default=1_000_000)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--learning-starts", type=int, default=1000)
@@ -374,6 +383,8 @@ def main() -> None:
         f"{args.reward_profile}_seed{args.seed}_{start_step + total_steps_to_run}"
     )
     checkpoint_dir = output_dir / "checkpoints" / run_name
+    lightweight_checkpoint_dir = output_dir / "lightweight_checkpoints" / run_name
+    full_checkpoint_steps = parse_checkpoint_steps(args.full_checkpoint_steps)
     start = time.time()
     losses: list[dict[str, float]] = []
     reward_component_sums: dict[str, float] = {}
@@ -426,6 +437,65 @@ def main() -> None:
                 },
             )
             print(f"checkpoint_path={checkpoint_path}")
+        if args.lightweight_checkpoint_freq > 0 and global_step % args.lightweight_checkpoint_freq == 0:
+            lightweight_path = lightweight_checkpoint_dir / f"checkpoint_{global_step}_steps.pt"
+            agent.save_lightweight(
+                lightweight_path,
+                extra={
+                    "step": global_step,
+                    "checkpoint_class": "lightweight_policy",
+                    "lookahead": args.lookahead,
+                    "action_mode": args.action_mode,
+                    "action_repeat": args.action_repeat,
+                    "reward_profile": args.reward_profile,
+                    "sequence_timing_profile": args.sequence_timing_profile,
+                    "midi_min": env.midi_min,
+                    "midi_max": env.midi_max,
+                    "sequence_pitches": env.sequence_pitches,
+                    "sequence_sampling_weights": env.sequence_sampling_weights,
+                },
+            )
+            print(f"lightweight_checkpoint_path={lightweight_path}")
+        if global_step in full_checkpoint_steps:
+            full_path = checkpoint_dir / f"full_checkpoint_{global_step}_steps.pt"
+            agent.save(
+                full_path,
+                replay_buffer=replay_buffer,
+                extra={
+                    "step": global_step,
+                    "checkpoint_class": "full_resumable",
+                    "lookahead": args.lookahead,
+                    "action_mode": args.action_mode,
+                    "action_repeat": args.action_repeat,
+                    "reward_profile": args.reward_profile,
+                    "sequence_timing_profile": args.sequence_timing_profile,
+                    "midi_min": env.midi_min,
+                    "midi_max": env.midi_max,
+                    "sequence_pitches": env.sequence_pitches,
+                    "sequence_sampling_weights": env.sequence_sampling_weights,
+                },
+            )
+            print(f"full_checkpoint_path={full_path}")
+        if args.rolling_full_checkpoint and global_step % max(1, args.checkpoint_freq or args.lightweight_checkpoint_freq or 100000) == 0:
+            rolling_path = checkpoint_dir / "rolling_latest_full.pt"
+            agent.save(
+                rolling_path,
+                replay_buffer=replay_buffer,
+                extra={
+                    "step": global_step,
+                    "checkpoint_class": "rolling_full_resumable",
+                    "lookahead": args.lookahead,
+                    "action_mode": args.action_mode,
+                    "action_repeat": args.action_repeat,
+                    "reward_profile": args.reward_profile,
+                    "sequence_timing_profile": args.sequence_timing_profile,
+                    "midi_min": env.midi_min,
+                    "midi_max": env.midi_max,
+                    "sequence_pitches": env.sequence_pitches,
+                    "sequence_sampling_weights": env.sequence_sampling_weights,
+                },
+            )
+            print(f"rolling_full_checkpoint_path={rolling_path}")
 
     runtime_seconds = time.time() - start
     model_path = output_dir / f"{run_name}.pt"
@@ -486,6 +556,9 @@ def main() -> None:
         "action_repeat": args.action_repeat,
         "reward_profile": args.reward_profile,
         "checkpoint_freq": args.checkpoint_freq,
+        "lightweight_checkpoint_freq": args.lightweight_checkpoint_freq,
+        "full_checkpoint_steps": sorted(full_checkpoint_steps),
+        "rolling_full_checkpoint": args.rolling_full_checkpoint,
         "loss_summary": loss_summary,
         "reward_component_summary": reward_component_summary,
         "deterministic_eval": deterministic_eval,

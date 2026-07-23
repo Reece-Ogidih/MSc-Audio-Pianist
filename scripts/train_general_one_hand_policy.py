@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 from stable_baselines3 import SAC
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.callbacks import CheckpointCallback
 
 from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
@@ -12,6 +13,27 @@ from ala_pianist.rl import GeneralOneHandGoalEnv, GeneralRewardConfig
 
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 OUT_DIR = ROOT / "experiments" / "general_one_hand"
+
+
+class FullSACCheckpointCallback(BaseCallback):
+    def __init__(self, save_path: Path, steps: set[int], *, rolling_latest: bool = False):
+        super().__init__()
+        self.save_path = Path(save_path)
+        self.steps = set(int(step) for step in steps)
+        self.rolling_latest = rolling_latest
+
+    def _on_step(self) -> bool:
+        step = int(self.num_timesteps)
+        if step in self.steps:
+            self._save_full(self.save_path / f"full_checkpoint_{step}_steps")
+        if self.rolling_latest and self.steps and step % max(1, min(self.steps)) == 0:
+            self._save_full(self.save_path / "rolling_latest_full")
+        return True
+
+    def _save_full(self, prefix: Path) -> None:
+        prefix.parent.mkdir(parents=True, exist_ok=True)
+        self.model.save(str(prefix))
+        self.model.save_replay_buffer(str(prefix) + "_replay_buffer.pkl")
 
 
 def evaluate_policy(model, env_kwargs: dict, *, episodes: int = 3, deterministic: bool = True) -> dict:
@@ -249,6 +271,12 @@ def parse_bool(raw: str | bool) -> bool:
     raise ValueError(f"Cannot parse boolean value {raw!r}.")
 
 
+def parse_checkpoint_steps(raw: str | None) -> set[int]:
+    if raw is None or raw.strip() == "":
+        return set()
+    return {int(part.strip()) for part in raw.split(",") if part.strip()}
+
+
 def load_or_create_model(args, env):
     if args.resume_model_path is None:
         return SAC(
@@ -263,9 +291,12 @@ def load_or_create_model(args, env):
             gamma=0.95,
             train_freq=1,
             gradient_steps=1,
+            device=args.device,
         )
     model = SAC.load(args.resume_model_path, env=env)
     check_model_compatibility(model, env, lookahead=args.lookahead)
+    if args.resume_replay_buffer_path is not None:
+        model.load_replay_buffer(args.resume_replay_buffer_path)
     return model
 
 
@@ -328,9 +359,14 @@ def main() -> None:
     parser.add_argument("--ramp-steps", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--resume-model-path", default=None)
+    parser.add_argument("--resume-replay-buffer-path", default=None)
     parser.add_argument("--reset-num-timesteps", default="false")
     parser.add_argument("--stage-name", default=None)
     parser.add_argument("--checkpoint-freq", type=int, default=0)
+    parser.add_argument("--lightweight-checkpoint-freq", type=int, default=0)
+    parser.add_argument("--full-checkpoint-steps", default="")
+    parser.add_argument("--rolling-full-checkpoint", action="store_true")
+    parser.add_argument("--device", default="auto")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -417,6 +453,32 @@ def main() -> None:
                 save_vecnormalize=True,
             )
         )
+    if args.lightweight_checkpoint_freq > 0:
+        lightweight_dir = output_dir / "lightweight_checkpoints" / (
+            f"{args.stage_name or 'general'}_{args.action_mode}x{args.action_repeat}_{args.reward_profile}"
+        )
+        lightweight_dir.mkdir(parents=True, exist_ok=True)
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=args.lightweight_checkpoint_freq,
+                save_path=str(lightweight_dir),
+                name_prefix="checkpoint",
+                save_replay_buffer=False,
+                save_vecnormalize=False,
+            )
+        )
+    full_checkpoint_steps = parse_checkpoint_steps(args.full_checkpoint_steps)
+    if full_checkpoint_steps or args.rolling_full_checkpoint:
+        full_dir = output_dir / "checkpoints" / (
+            f"{args.stage_name or 'general'}_{args.action_mode}x{args.action_repeat}_{args.reward_profile}"
+        )
+        callbacks.append(
+            FullSACCheckpointCallback(
+                full_dir,
+                full_checkpoint_steps,
+                rolling_latest=args.rolling_full_checkpoint,
+            )
+        )
     start = time.time()
     model.learn(
         total_timesteps=args.timesteps,
@@ -459,9 +521,14 @@ def main() -> None:
         "ramp_steps": args.ramp_steps,
         "reward_profile": args.reward_profile,
         "checkpoint_freq": args.checkpoint_freq,
+        "lightweight_checkpoint_freq": args.lightweight_checkpoint_freq,
+        "full_checkpoint_steps": sorted(full_checkpoint_steps),
+        "rolling_full_checkpoint": args.rolling_full_checkpoint,
         "resume_model_path": args.resume_model_path,
+        "resume_replay_buffer_path": args.resume_replay_buffer_path,
         "reset_num_timesteps": parse_bool(args.reset_num_timesteps),
         "stage_name": args.stage_name,
+        "device": args.device,
         "compatibility_checks": {
             "action_space_shape": env.action_space.shape,
             "observation_space_shape": env.observation_space.shape,

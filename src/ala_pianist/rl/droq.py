@@ -318,6 +318,24 @@ class DroQAgent:
         torch.save(payload, path)
         return path
 
+    def save_lightweight(self, path: str | Path, *, extra: dict | None = None) -> Path:
+        """Save actor-only policy state for deterministic checkpoint evaluation."""
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "checkpoint_class": "lightweight_policy",
+                "algorithm": "droq",
+                "config": asdict(self.config),
+                "actor": self.actor.state_dict(),
+                "extra": extra or {},
+                "rng_state": rng_state_dict(),
+            },
+            path,
+        )
+        return path
+
     @classmethod
     def load(
         cls,
@@ -332,13 +350,16 @@ class DroQAgent:
             config_payload["device"] = device
         agent = cls(DroQConfig(**config_payload))
         agent.actor.load_state_dict(payload["actor"])
-        agent.critics.load_state_dict(payload["critics"])
-        agent.target_critics.load_state_dict(payload["target_critics"])
+        if "critics" in payload:
+            agent.critics.load_state_dict(payload["critics"])
+        if "target_critics" in payload:
+            agent.target_critics.load_state_dict(payload["target_critics"])
         if not reset_optimizers and "actor_optimizer" in payload:
             agent.actor_optimizer.load_state_dict(payload["actor_optimizer"])
         if not reset_optimizers and "critic_optimizer" in payload:
             agent.critic_optimizer.load_state_dict(payload["critic_optimizer"])
-        agent.log_alpha.data.copy_(payload["log_alpha"].to(agent.device))
+        if "log_alpha" in payload:
+            agent.log_alpha.data.copy_(payload["log_alpha"].to(agent.device))
         if (
             not reset_optimizers
             and agent.alpha_optimizer is not None

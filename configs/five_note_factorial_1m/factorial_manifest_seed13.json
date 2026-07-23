@@ -1,7 +1,7 @@
 {
   "manifest_id": "five_note_factorial_seed13_1m",
   "description": "Fresh five-note SAC/DroQ by reward factorial benchmark for C5-E5.",
-  "required_code_commit": "TO_BE_FILLED_BY_COMMIT_AMEND",
+  "required_code_commit": "42c3afc313b05707be9495a10341f574ee8abcb2",
   "curriculum_config": "five_note_curriculum_v1.json",
   "expected_total_timesteps": 1000000,
   "lightweight_checkpoint_steps": [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000],

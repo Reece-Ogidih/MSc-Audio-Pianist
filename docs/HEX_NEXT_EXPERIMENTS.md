@@ -45,6 +45,16 @@ Purpose: prepare a compact five-note controller around C5-E5 without expanding r
 - Reward: existing `transition_cleanup`, because the replay buffer was collected with that reward
 - Status: prepared only; review B before launch
 
+Before launching B on Hex, run a local preflight canary:
+
+- Run name: `droq_cleanliness_sensitive_v1_seed13_local_canary_20k`
+- Config source: `configs/droq_cleanliness_sensitive_v1_seed13_300k.json`
+- Allowed overrides: 20,000 total timesteps, local stage/run name, 5k checkpoint frequency, local ignored output directory
+- Purpose: engineering validation of reward scale, logging, checkpointing, action saturation and finite losses
+- Non-purpose: final performance comparison or production checkpoint generation
+
+The local canary starts from a fresh seed-13 DroQ agent and a fresh replay buffer, but its actor, critics, optimisers and replay buffer are not transferred into the production Hex run. The eventual 300k Hex cleanliness result must start fresh from seed 13 with frozen reward coefficients and should be reported from Hex outputs only.
+
 ## Files Changed
 
 - `src/ala_pianist/rl/general_one_hand_env.py`
@@ -90,6 +100,8 @@ Expected scratch storage:
 - SAC fair 1M: tens of GB if replay buffers are saved with periodic checkpoints.
 - DroQ cleanliness 300k: several GB.
 - Five-note expansion: several GB to tens of GB depending on checkpoints.
+
+For the cleanliness run, lightweight evaluation checkpoints every 50k are sufficient for normal review. Full replay-buffer checkpoints should be saved only at sensible milestones or final outputs when faithful resume is needed, because replay buffers dominate storage. Logs, generated MIDI, checkpoints, replay buffers and evaluation CSV/JSON/plots should live on mounted host/scratch storage with unique run directories and container names.
 
 ## Smoke Commands
 

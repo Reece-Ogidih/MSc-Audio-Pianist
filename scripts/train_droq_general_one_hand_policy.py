@@ -196,6 +196,8 @@ def _validate_resume_config(
 
 
 def validate_training_mode_args(args) -> None:
+    if getattr(args, "warm_start_policy_path", None) is not None and args.resume_checkpoint is not None:
+        raise ValueError("--warm-start-policy-path and --resume-checkpoint are mutually exclusive.")
     if args.resume_checkpoint is not None and args.additional_timesteps is None:
         raise ValueError("--resume-checkpoint requires --additional-timesteps.")
     if args.resume_checkpoint is None and args.additional_timesteps is not None:
@@ -218,6 +220,32 @@ def parse_checkpoint_steps(raw: str | None) -> set[int]:
     if raw is None or raw.strip() == "":
         return set()
     return {int(part.strip()) for part in raw.split(",") if part.strip()}
+
+
+def save_lightweight_checkpoint(
+    *,
+    agent: DroQAgent,
+    path: Path,
+    step: int,
+    args,
+    env: GeneralOneHandGoalEnv,
+) -> None:
+    agent.save_lightweight(
+        path,
+        extra={
+            "step": int(step),
+            "checkpoint_class": "lightweight_policy",
+            "lookahead": args.lookahead,
+            "action_mode": args.action_mode,
+            "action_repeat": args.action_repeat,
+            "reward_profile": args.reward_profile,
+            "sequence_timing_profile": args.sequence_timing_profile,
+            "midi_min": env.midi_min,
+            "midi_max": env.midi_max,
+            "sequence_pitches": env.sequence_pitches,
+            "sequence_sampling_weights": env.sequence_sampling_weights,
+        },
+    )
 
 
 def main() -> None:
@@ -253,6 +281,8 @@ def main() -> None:
             "anti_coupling",
             "transition_cleanup",
             "transition_cleanup_sensitive_v1",
+            "transition_cleanup_release_completion_v2",
+            "transition_cleanup_release_completion_motion_v2",
         ],
     )
     parser.add_argument("--output-dir", default=str(OUT_DIR))
@@ -263,6 +293,7 @@ def main() -> None:
     parser.add_argument("--stage-name", default=None)
     parser.add_argument("--checkpoint-freq", type=int, default=0)
     parser.add_argument("--lightweight-checkpoint-freq", type=int, default=0)
+    parser.add_argument("--lightweight-checkpoint-steps", default="")
     parser.add_argument("--full-checkpoint-steps", default="")
     parser.add_argument("--rolling-full-checkpoint", action="store_true")
     parser.add_argument("--buffer-size", type=int, default=1_000_000)
@@ -281,6 +312,7 @@ def main() -> None:
     parser.add_argument("--fixed-alpha", action="store_true")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--resume-checkpoint", default=None)
+    parser.add_argument("--warm-start-policy-path", default=None)
     parser.add_argument("--additional-timesteps", type=int, default=None)
     parser.add_argument("--resume-reset-replay-buffer", action="store_true")
     parser.add_argument("--resume-reset-optimizers", action="store_true")
@@ -325,7 +357,16 @@ def main() -> None:
         if args.resume_checkpoint is not None
         else None
     )
-    checkpoint_config = checkpoint_payload.get("config", {}) if checkpoint_payload else {}
+    warm_start_payload = (
+        load_droq_checkpoint(args.warm_start_policy_path, device=args.device)
+        if args.warm_start_policy_path is not None
+        else None
+    )
+    checkpoint_config = {}
+    if checkpoint_payload:
+        checkpoint_config = checkpoint_payload.get("config", {})
+    elif warm_start_payload:
+        checkpoint_config = warm_start_payload.get("config", {})
     config = DroQConfig(
         observation_dim=int(env.observation_space.shape[0]),
         action_dim=int(env.action_space.shape[0]),
@@ -352,6 +393,10 @@ def main() -> None:
     if checkpoint_payload is None:
         agent = DroQAgent(config)
         replay_buffer = ReplayBuffer(config.observation_dim, config.action_dim, config.buffer_size)
+        if warm_start_payload is not None:
+            agent.actor.load_state_dict(warm_start_payload["actor"])
+            print(f"warm_start_policy_path={args.warm_start_policy_path}")
+            print("warm_start_semantics=actor_weights_only_fresh_critics_optimizers_replay_buffer_rng_from_seed")
     else:
         _validate_resume_config(payload=checkpoint_payload, config=config, env=env, args=args)
         agent = DroQAgent.load(
@@ -385,6 +430,7 @@ def main() -> None:
     checkpoint_dir = output_dir / "checkpoints" / run_name
     lightweight_checkpoint_dir = output_dir / "lightweight_checkpoints" / run_name
     full_checkpoint_steps = parse_checkpoint_steps(args.full_checkpoint_steps)
+    lightweight_checkpoint_steps = parse_checkpoint_steps(args.lightweight_checkpoint_steps)
     start = time.time()
     losses: list[dict[str, float]] = []
     reward_component_sums: dict[str, float] = {}
@@ -439,21 +485,22 @@ def main() -> None:
             print(f"checkpoint_path={checkpoint_path}")
         if args.lightweight_checkpoint_freq > 0 and global_step % args.lightweight_checkpoint_freq == 0:
             lightweight_path = lightweight_checkpoint_dir / f"checkpoint_{global_step}_steps.pt"
-            agent.save_lightweight(
-                lightweight_path,
-                extra={
-                    "step": global_step,
-                    "checkpoint_class": "lightweight_policy",
-                    "lookahead": args.lookahead,
-                    "action_mode": args.action_mode,
-                    "action_repeat": args.action_repeat,
-                    "reward_profile": args.reward_profile,
-                    "sequence_timing_profile": args.sequence_timing_profile,
-                    "midi_min": env.midi_min,
-                    "midi_max": env.midi_max,
-                    "sequence_pitches": env.sequence_pitches,
-                    "sequence_sampling_weights": env.sequence_sampling_weights,
-                },
+            save_lightweight_checkpoint(
+                agent=agent,
+                path=lightweight_path,
+                step=global_step,
+                args=args,
+                env=env,
+            )
+            print(f"lightweight_checkpoint_path={lightweight_path}")
+        if global_step in lightweight_checkpoint_steps:
+            lightweight_path = lightweight_checkpoint_dir / f"checkpoint_{global_step}_steps.pt"
+            save_lightweight_checkpoint(
+                agent=agent,
+                path=lightweight_path,
+                step=global_step,
+                args=args,
+                env=env,
             )
             print(f"lightweight_checkpoint_path={lightweight_path}")
         if global_step in full_checkpoint_steps:
@@ -544,6 +591,12 @@ def main() -> None:
         "start_step": start_step,
         "final_step": final_step,
         "resume_checkpoint": args.resume_checkpoint,
+        "warm_start_policy_path": args.warm_start_policy_path,
+        "warm_start_semantics": (
+            "actor_weights_only_fresh_critics_optimizers_replay_buffer_rng_from_seed"
+            if args.warm_start_policy_path is not None
+            else None
+        ),
         "resume_reset_replay_buffer": args.resume_reset_replay_buffer,
         "resume_reset_optimizers": args.resume_reset_optimizers,
         "seed": args.seed,
@@ -557,6 +610,7 @@ def main() -> None:
         "reward_profile": args.reward_profile,
         "checkpoint_freq": args.checkpoint_freq,
         "lightweight_checkpoint_freq": args.lightweight_checkpoint_freq,
+        "lightweight_checkpoint_steps": sorted(lightweight_checkpoint_steps),
         "full_checkpoint_steps": sorted(full_checkpoint_steps),
         "rolling_full_checkpoint": args.rolling_full_checkpoint,
         "loss_summary": loss_summary,

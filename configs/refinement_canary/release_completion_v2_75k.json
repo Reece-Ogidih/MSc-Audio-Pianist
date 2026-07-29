@@ -1,0 +1,144 @@
+{
+  "action_mode": "direct",
+  "action_repeat": 1,
+  "algorithm": "droq",
+  "arm": "release_completion_v2",
+  "batch_size": 256,
+  "checkpoint_freq": 0,
+  "curriculum": "sequence_cleanup",
+  "device": "cuda",
+  "evaluation_seed": 23,
+  "evaluation_steps": [
+    0,
+    5000,
+    10000,
+    25000,
+    50000,
+    75000
+  ],
+  "full_resumable_checkpoint_steps": [
+    75000
+  ],
+  "horizon_steps": 96,
+  "learning_starts": 1000,
+  "lightweight_checkpoint_freq": 0,
+  "lightweight_checkpoint_steps": [
+    5000,
+    10000,
+    25000,
+    50000,
+    75000
+  ],
+  "lookahead": 1,
+  "midi_max": 76,
+  "midi_min": 72,
+  "output_subdir": "experiments/refinement_canary/release_completion_v2",
+  "reward_config": {
+    "action_weight": 0.002,
+    "cleanup_gate_threshold": 0.75,
+    "csharp_dsharp_key54_weight": 2.0,
+    "csharp_dsharp_pressed_weight": 1.0,
+    "dsharp_csharp_key52_weight": 1.0,
+    "dsharp_csharp_pressed_weight": 0.5,
+    "duration_weight": 0.25,
+    "early_activation_weight": 0.5,
+    "fingering_weight": 0.0,
+    "gated_unintended_weight": 1.0,
+    "gated_wrong_pressed_weight": 0.75,
+    "high_unintended_threshold": 0.75,
+    "high_unintended_weight": 0.35,
+    "late_release_weight": 0.75,
+    "native_reward_weight": 0.0,
+    "nearby_wrong_key_weight": 0.75,
+    "press_threshold": 0.5,
+    "release_completion_bonus": 1.5,
+    "release_completion_release_weight": 1.25,
+    "release_previous_key_weight": 0.5,
+    "smoothness_weight": 0.001,
+    "target_activation_bonus": 3.0,
+    "target_activation_threshold": 0.9,
+    "target_travel_weight": 4.0,
+    "transition_action_rate_weight": 0.0,
+    "transition_saturation_threshold": 0.95,
+    "transition_saturation_weight": 0.0,
+    "transition_stray_key_weight": 1.0,
+    "transition_stray_pressed_weight": 0.75,
+    "unintended_near_press_weight": 0.35,
+    "unintended_press_weight": 1.0,
+    "unintended_soft_threshold": 0.2,
+    "unintended_travel_weight": 0.75,
+    "wrong_pressed_weight": 0.2,
+    "wrong_travel_weight": 0.15
+  },
+  "reward_profile": "transition_cleanup_release_completion_v2",
+  "seed": 13,
+  "sequence_pitches": [
+    [
+      72
+    ],
+    [
+      73
+    ],
+    [
+      74
+    ],
+    [
+      75
+    ],
+    [
+      76
+    ],
+    [
+      72,
+      73
+    ],
+    [
+      73,
+      72
+    ],
+    [
+      73,
+      74
+    ],
+    [
+      74,
+      73
+    ],
+    [
+      74,
+      75
+    ],
+    [
+      75,
+      74
+    ],
+    [
+      75,
+      76
+    ],
+    [
+      76,
+      75
+    ]
+  ],
+  "sequence_sampling_weights": [
+    0.07,
+    0.07,
+    0.07,
+    0.07,
+    0.07,
+    0.08125,
+    0.1015625,
+    0.08125,
+    0.08125,
+    0.08125,
+    0.08125,
+    0.0609375,
+    0.08125
+  ],
+  "sequence_timing_profile": "aligned",
+  "timesteps": 75000,
+  "utd_ratio": 4,
+  "warm_start_policy_path": "/home/reece_dev/msc-audio-pianist/artifacts/frozen_models/five_note_symbolic_controller_v1/checkpoint_800000_steps.pt",
+  "warm_start_semantics": "actor weights only; fresh critics, optimizers, replay buffer and RNG from seed"
+}

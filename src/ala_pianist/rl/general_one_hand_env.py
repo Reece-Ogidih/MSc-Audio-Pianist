@@ -54,6 +54,11 @@ class GeneralRewardConfig:
     late_release_weight: float = 0.0
     early_activation_weight: float = 0.0
     duration_weight: float = 0.0
+    release_completion_release_weight: float = 0.0
+    release_completion_bonus: float = 0.0
+    transition_action_rate_weight: float = 0.0
+    transition_saturation_weight: float = 0.0
+    transition_saturation_threshold: float = 0.95
 
 
 class GeneralOneHandGoalEnv(gym.Env):
@@ -136,6 +141,10 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._last_nonempty_target_keys: tuple[int, ...] = ()
         self._reward_previous_target_keys: tuple[int, ...] = ()
         self._reward_future_target_keys: tuple[int, ...] = ()
+        self._transition_previous_target_keys: tuple[int, ...] = ()
+        self._transition_current_target_keys: tuple[int, ...] = ()
+        self._transition_release_achieved = False
+        self._transition_completion_awarded = False
 
         self.curriculum_clip: CurriculumClip | None = None
         if midi_path is None:
@@ -193,6 +202,10 @@ class GeneralOneHandGoalEnv(gym.Env):
         self._last_nonempty_target_keys = ()
         self._reward_previous_target_keys = ()
         self._reward_future_target_keys = ()
+        self._transition_previous_target_keys = ()
+        self._transition_current_target_keys = ()
+        self._transition_release_achieved = False
+        self._transition_completion_awarded = False
         if self._regenerate_curriculum_on_reset:
             if seed is not None and seed != self._last_reset_seed:
                 self.seed_value = int(seed)
@@ -401,6 +414,10 @@ class GeneralOneHandGoalEnv(gym.Env):
         dsharp_csharp_key52_pressed = 1.0 if 54 in target_keys and 52 in self.current_pressed_keys() else 0.0
         previous_target_keys = self._last_nonempty_target_keys
         future_target_keys = self.future_target_keys()
+        transition_event = self._update_release_completion_transition(
+            target_keys=tuple(int(key) for key in target_keys),
+            previous_target_keys=tuple(int(key) for key in previous_target_keys),
+        )
         self._reward_previous_target_keys = tuple(int(key) for key in previous_target_keys)
         self._reward_future_target_keys = tuple(int(key) for key in future_target_keys)
         unintended_sensitive = unintended_penalty_components(
@@ -415,6 +432,60 @@ class GeneralOneHandGoalEnv(gym.Env):
         release_previous_key_state = 0.0
         if release_gate:
             release_previous_key_state = float(max(states[key] for key in previous_target_keys))
+        transition_gate = (
+            1.0
+            if self._transition_current_target_keys
+            and not (self._transition_release_achieved and self._transition_completion_awarded)
+            else 0.0
+        )
+        release_completion_previous_key_state = 0.0
+        if transition_gate and self._transition_previous_target_keys:
+            release_completion_previous_key_state = float(
+                max(states[key] for key in self._transition_previous_target_keys)
+            )
+        release_achieved_event = 0.0
+        if (
+            transition_gate
+            and not self._transition_release_achieved
+            and release_completion_previous_key_state < self.reward_config.unintended_soft_threshold
+        ):
+            self._transition_release_achieved = True
+            release_achieved_event = 1.0
+        release_completion_release_penalty_state = (
+            0.0 if self._transition_release_achieved else release_completion_previous_key_state
+        )
+        second_target_completion_event = 0.0
+        if (
+            transition_gate
+            and target_keys
+            and tuple(target_keys) == self._transition_current_target_keys
+            and not self._transition_completion_awarded
+            and target_state >= self.reward_config.press_threshold
+        ):
+            self._transition_completion_awarded = True
+            second_target_completion_event = 1.0
+        if (
+            self._transition_current_target_keys
+            and target_keys
+            and tuple(target_keys) != self._transition_current_target_keys
+        ):
+            self._clear_release_completion_transition()
+            transition_gate = 0.0
+        if not target_keys and not future_target_keys and self._transition_current_target_keys:
+            self._clear_release_completion_transition()
+        transition_completed_this_step = (
+            transition_gate
+            and self._transition_release_achieved
+            and self._transition_completion_awarded
+        )
+        transition_action_rate = smoothness if transition_gate else 0.0
+        transition_saturation = 0.0
+        if transition_gate:
+            threshold = float(self.reward_config.transition_saturation_threshold)
+            denom = max(1e-6, 1.0 - threshold)
+            transition_saturation = float(
+                np.mean(np.maximum(0.0, np.abs(normalized_action) - threshold) / denom)
+            )
         transition_episode = self.curriculum_clip is not None and len(set(self.curriculum_clip.key_indices)) > 1
         transition_stray_key_state = 0.0
         transition_stray_pressed_count = 0.0
@@ -426,7 +497,7 @@ class GeneralOneHandGoalEnv(gym.Env):
             )
         if target_keys:
             self._last_nonempty_target_keys = tuple(target_keys)
-        return {
+        components = {
             "target_key_state": target_state,
             "max_unintended_key_state": max_unintended,
             "wrong_pressed_key_count": float(wrong_pressed),
@@ -444,10 +515,21 @@ class GeneralOneHandGoalEnv(gym.Env):
             "dsharp_csharp_key52_pressed": dsharp_csharp_key52_pressed,
             "release_gate": release_gate,
             "release_previous_key_state": release_previous_key_state,
+            "release_completion_transition_gate": transition_gate,
+            "release_completion_target_changed_event": float(transition_event),
+            "release_completion_previous_key_state": release_completion_previous_key_state,
+            "release_completion_release_penalty_state": release_completion_release_penalty_state,
+            "release_completion_release_achieved_event": release_achieved_event,
+            "release_completion_second_target_event": second_target_completion_event,
+            "transition_action_rate": transition_action_rate,
+            "transition_saturation": transition_saturation,
             "transition_stray_key_state": transition_stray_key_state,
             "transition_stray_pressed_count": transition_stray_pressed_count,
             **unintended_sensitive,
         }
+        if transition_completed_this_step:
+            self._clear_release_completion_transition()
+        return components
 
     def _combine_reward_components(self, components: dict[str, float]) -> float:
         cfg = self.reward_config
@@ -477,6 +559,12 @@ class GeneralOneHandGoalEnv(gym.Env):
             - cfg.late_release_weight * components["late_release_travel"]
             - cfg.early_activation_weight * components["early_activation_travel"]
             - cfg.duration_weight * components["unintended_integrated_duration"]
+            - cfg.release_completion_release_weight
+            * components["release_completion_transition_gate"]
+            * components["release_completion_release_penalty_state"]
+            + cfg.release_completion_bonus * components["release_completion_second_target_event"]
+            - cfg.transition_action_rate_weight * components["transition_action_rate"]
+            - cfg.transition_saturation_weight * components["transition_saturation"]
         )
 
     def _fingering_score(self, target_keys: list[int]) -> float:
@@ -498,6 +586,28 @@ class GeneralOneHandGoalEnv(gym.Env):
             if wrong_key is not None and 0 <= wrong_key < states.size:
                 values.append(float(states[wrong_key]))
         return max(values, default=0.0)
+
+    def _update_release_completion_transition(
+        self,
+        *,
+        target_keys: tuple[int, ...],
+        previous_target_keys: tuple[int, ...],
+    ) -> bool:
+        if not target_keys or not previous_target_keys or target_keys == previous_target_keys:
+            return False
+        if target_keys != self._transition_current_target_keys:
+            self._transition_previous_target_keys = previous_target_keys
+            self._transition_current_target_keys = target_keys
+            self._transition_release_achieved = False
+            self._transition_completion_awarded = False
+            return True
+        return False
+
+    def _clear_release_completion_transition(self) -> None:
+        self._transition_previous_target_keys = ()
+        self._transition_current_target_keys = ()
+        self._transition_release_achieved = False
+        self._transition_completion_awarded = False
 
     def _info(
         self,

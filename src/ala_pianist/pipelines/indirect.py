@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import csv
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import Iterable
@@ -105,18 +106,65 @@ def benchmark_sequence_events(
     )
 
 
+def _explicit_soundfont_from_env() -> Path | None:
+    for env_name in ("SOUNDFONT", "ALA_PIANIST_SOUNDFONT"):
+        value = os.environ.get(env_name)
+        if not value:
+            continue
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{env_name} is set to {value!r}, but that path does not exist or is not a file. "
+                "Unset the variable to use default soundfont discovery."
+            )
+        return path
+    return None
+
+
+def _default_soundfont_candidates() -> list[Path]:
+    project_root = Path(__file__).resolve().parents[3]
+    env_project_root = os.environ.get("PROJECT_ROOT")
+    roots = [project_root]
+    if env_project_root:
+        roots.insert(0, Path(env_project_root).expanduser().resolve())
+
+    candidates: list[Path] = []
+    for root in roots:
+        candidates.extend(
+            [
+                root / "third_party/robopianist/robopianist/soundfonts/TimGM6mb.sf2",
+                root / "third_party/robopianist/third_party/soundfonts/TimGM6mb.sf2",
+            ]
+        )
+    candidates.extend(
+        [
+            Path("/home/reece_dev/msc-audio-pianist/third_party/robopianist/robopianist/soundfonts/TimGM6mb.sf2"),
+            Path("/home/reece_dev/msc-audio-pianist/third_party/robopianist/third_party/soundfonts/TimGM6mb.sf2"),
+            Path("/home/reece_dev/miniforge3/envs/pianist/lib/python3.10/site-packages/pretty_midi/TimGM6mb.sf2"),
+        ]
+    )
+    return candidates
+
+
 def find_default_soundfont() -> Path:
     """Locate the existing RoboPianist TimGM6mb soundfont."""
 
-    candidates = [
-        Path("/home/reece_dev/msc-audio-pianist/third_party/robopianist/robopianist/soundfonts/TimGM6mb.sf2"),
-        Path("/home/reece_dev/msc-audio-pianist/third_party/robopianist/third_party/soundfonts/TimGM6mb.sf2"),
-        Path("/home/reece_dev/miniforge3/envs/pianist/lib/python3.10/site-packages/pretty_midi/TimGM6mb.sf2"),
-    ]
+    explicit = _explicit_soundfont_from_env()
+    if explicit is not None:
+        return explicit
+
+    candidates = _default_soundfont_candidates()
     for candidate in candidates:
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
-    raise FileNotFoundError("Could not locate TimGM6mb.sf2 in known project/environment paths.")
+    candidate_text = "\n".join(f"- {candidate}" for candidate in candidates)
+    raise FileNotFoundError(
+        "Could not locate TimGM6mb.sf2 in known project/environment paths. "
+        "Set SOUNDFONT to an explicit .sf2 path if it lives elsewhere.\n"
+        f"Checked:\n{candidate_text}"
+    )
 
 
 def render_midi_with_fluidsynth(

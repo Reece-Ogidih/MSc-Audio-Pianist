@@ -17,6 +17,8 @@ LOG_DIR="${RUN_DIR}/logs"
 LOG_PATH="${LOG_DIR}/train.log"
 METADATA_START="${RUN_DIR}/launch_metadata_start.json"
 METADATA_END="${RUN_DIR}/launch_metadata_end.json"
+DEFAULT_SOUNDFONT="${PROJECT_ROOT}/third_party/robopianist/robopianist/soundfonts/TimGM6mb.sf2"
+SOUNDFONT_PATH="${SOUNDFONT:-${DEFAULT_SOUNDFONT}}"
 
 if [[ -e "${RUN_DIR}" ]] && [[ -n "$(find "${RUN_DIR}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
   echo "Refusing to overwrite non-empty run directory: ${RUN_DIR}" >&2
@@ -25,10 +27,25 @@ fi
 
 mkdir -p "${LOG_DIR}"
 cd "${PROJECT_ROOT}"
+git config --global --add safe.directory "${PROJECT_ROOT}"
+
+if [[ ! -f "${SOUNDFONT_PATH}" || ! -s "${SOUNDFONT_PATH}" ]]; then
+  echo "Soundfont is missing or empty: ${SOUNDFONT_PATH}" >&2
+  echo "Set SOUNDFONT to the mounted TimGM6mb.sf2 path before launching." >&2
+  exit 3
+fi
+SOUNDFONT_SHA256="$(sha256sum "${SOUNDFONT_PATH}" | awk '{print $1}')"
+FLUIDSYNTH_PATH="$(command -v fluidsynth || true)"
+if [[ -z "${FLUIDSYNTH_PATH}" ]]; then
+  echo "fluidsynth executable was not found in PATH." >&2
+  exit 4
+fi
+FLUIDSYNTH_VERSION="$(fluidsynth --version 2>&1 | head -1 || true)"
 
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="${PROJECT_ROOT}/src:${PROJECT_ROOT}/third_party/robopianist:${PROJECT_ROOT}/scripts"
 export MUJOCO_GL="${MUJOCO_GL:-egl}"
+export SOUNDFONT="${SOUNDFONT_PATH}"
 
 python - <<PY
 import json, os, socket, subprocess
@@ -48,6 +65,14 @@ payload = {
     "torch_version": torch.__version__,
     "torch_cuda_version": torch.version.cuda,
     "cuda_available": torch.cuda.is_available(),
+    "soundfont": {
+        "path": "${SOUNDFONT_PATH}",
+        "sha256": "${SOUNDFONT_SHA256}",
+    },
+    "fluidsynth": {
+        "path": "${FLUIDSYNTH_PATH}",
+        "version": "${FLUIDSYNTH_VERSION}",
+    },
     "audio": {"sample_rate": 16000, "past_context_seconds": 0.10, "future_context_seconds": 0.40, "window_samples": 8000},
     "architecture": "raw waveform -> Conv1D -> GRU -> fusion MLP -> 22D DroQ actor",
     "replay_schema": "indexed_audio_references",

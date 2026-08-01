@@ -1,0 +1,113 @@
+{
+  "pipeline_name": "indirect_pipeline_five_note",
+  "pipeline_version": "v1",
+  "pipeline_1_architecturally_complete": true,
+  "pipeline_1_frozen_for_comparison": true,
+  "selected_final_path": "RAW",
+  "architecture": [
+    "audio",
+    "Basic Pitch 0.4.0 ONNX",
+    "TimedNote",
+    "ControllerGoalSequence",
+    "frozen five-note symbolic controller",
+    "RoboPianist actions"
+  ],
+  "midi_range": [72, 76],
+  "key_index_mapping": "key_index = midi_pitch - 21",
+  "right_hand_only": true,
+  "sustain": "none",
+  "benchmark_sequences": {
+    "anchors": [[72], [73], [74], [75], [76]],
+    "transitions": [[72, 73], [73, 72], [73, 74], [74, 73], [74, 75], [75, 74], [75, 76], [76, 75]]
+  },
+  "timing": {
+    "profile": "aligned",
+    "note_duration_seconds": 0.28,
+    "gap_seconds": 0.12,
+    "control_timestep_seconds": 0.05
+  },
+  "renderer": {
+    "name": "FluidSynth",
+    "version": "2.3.4",
+    "soundfont": "third_party/robopianist/robopianist/soundfonts/TimGM6mb.sf2",
+    "sample_rate_hz": 44100,
+    "gain": 0.5
+  },
+  "transcription_model": {
+    "name": "basic-pitch",
+    "version": "0.4.0",
+    "backend": "ONNX",
+    "onnxruntime_version": "1.23.2",
+    "confidence_threshold": 0.3,
+    "onset_threshold": 0.5,
+    "frame_threshold": 0.3,
+    "minimum_note_length_ms": 80.0
+  },
+  "cleanup": {
+    "selected": false,
+    "reason": "The bounded monophonic cleanup removed duplicate symbolic predictions but did not improve offset/duration quality or downstream controller metrics.",
+    "evaluated_rules": {
+      "invalid_notes": "discard zero/negative duration and optionally clip to audio duration",
+      "same_pitch_duplicates": "suppress later predictions for a pitch already present while preserving the earliest onset",
+      "monophonic_overlap": "truncate previous note offset to next predicted onset",
+      "oracle_reference_used": false
+    }
+  },
+  "canonical_representation": "ala_pianist.music.timed_notes.TimedNote",
+  "controller_goal_representation": "ala_pianist.music.timed_notes.ControllerGoalSequence",
+  "frozen_controller": {
+    "relative_path": "artifacts/frozen_models/five_note_symbolic_controller_v1/checkpoint_800000_steps.pt",
+    "sha256": "927c1050c08769c49568013ead0c69d69d4bd19ff23eb632e89bd89fb735ac4c"
+  },
+  "headline_metrics": {
+    "oracle_midi_controller": {
+      "pressed_key_precision_mean": 0.9615384615384616,
+      "pressed_key_recall_mean": 0.6923076923076923,
+      "pressed_key_f1_mean": 0.782051282051282,
+      "timestep_f1_mean": 0.7580231945557022,
+      "max_unintended_key_state_mean": 0.32818953005167156
+    },
+    "raw_basic_pitch_transcription": {
+      "note_precision_mean": 0.5897435897435899,
+      "note_recall_mean": 1.0,
+      "note_f1_mean": 0.7358974358974358,
+      "onset_mae_seconds_mean": 0.009656375370661099,
+      "offset_mae_seconds_mean": 0.3265654979940694,
+      "duration_mae_seconds_mean": 0.3201465201465201,
+      "with_offset_note_f1_mean": 0.0,
+      "false_positive_count_mean": 1.0769230769230769,
+      "false_negative_count_mean": 0.0
+    },
+    "raw_basic_pitch_controller": {
+      "pressed_key_precision_mean": 0.8333333333333334,
+      "pressed_key_recall_mean": 0.6923076923076923,
+      "pressed_key_f1_mean": 0.7230769230769231,
+      "timestep_f1_mean": 0.654565058661272,
+      "max_unintended_key_state_mean": 0.48210482915433556
+    },
+    "cleaned_basic_pitch_transcription": {
+      "note_precision_mean": 1.0,
+      "note_recall_mean": 1.0,
+      "note_f1_mean": 1.0,
+      "onset_mae_seconds_mean": 0.009656375370661099,
+      "offset_mae_seconds_mean": 0.3265654979940694,
+      "duration_mae_seconds_mean": 0.3201465201465201,
+      "with_offset_note_f1_mean": 0.0
+    },
+    "cleaned_basic_pitch_controller": {
+      "pressed_key_precision_mean": 0.8333333333333334,
+      "pressed_key_recall_mean": 0.6923076923076923,
+      "pressed_key_f1_mean": 0.7230769230769231,
+      "timestep_f1_mean": 0.654565058661272,
+      "max_unintended_key_state_mean": 0.48210482915433556
+    }
+  },
+  "known_limitations": [
+    "Basic Pitch note-off estimates remain weak on the rendered five-note benchmark.",
+    "The frozen symbolic controller is imperfect under oracle MIDI.",
+    "The benchmark uses generated five-note monophonic audio, not an external real-performance dataset."
+  ],
+  "tracked_documentation": "docs/experiments/indirect_pipeline_five_note_v1.md",
+  "ignored_generated_manifest": "artifacts/frozen_models/indirect_pipeline_five_note_v1/manifest.json",
+  "release_tag": "pipeline1-five-note-v1"
+}

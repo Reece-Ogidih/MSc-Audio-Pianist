@@ -1,0 +1,12 @@
+# Reproducibility pins for the frozen Pipeline 1 v1 audio frontend.
+# The selected path is Basic Pitch with the packaged ONNX model. Do not add
+# tflite-runtime here; the local TFLite backend is incompatible with NumPy 2.2.
+basic-pitch[onnx]==0.4.0
+onnxruntime==1.23.2
+setuptools==80.10.2
+resampy==0.4.2
+librosa==0.11.0
+pretty-midi==0.2.11
+mido==1.3.3
+soundfile==0.14.0
+pyfluidsynth==1.4.0

@@ -22,9 +22,14 @@ from ala_pianist.evaluation.trajectory import (
     record_action_rollout,
     save_trajectory_json,
 )
+from ala_pianist.evaluation.transcription_metrics import (
+    TranscriptionMetrics,
+    transcription_note_metrics,
+)
 
 __all__ = [
     "KeySetMetrics",
+    "TranscriptionMetrics",
     "TrajectoryRecord",
     "ACTION_NAMES",
     "action_dimension_mapping",
@@ -40,4 +45,5 @@ __all__ = [
     "save_trajectory_json",
     "standardized_difference",
     "timestep_key_metrics",
+    "transcription_note_metrics",
 ]

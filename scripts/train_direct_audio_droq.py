@@ -317,12 +317,19 @@ def main() -> None:
 
 
 def _audio_bank_provenance(env: DirectAudioGoalEnv) -> dict:
+    variants_per_sequence = {
+        "_".join(str(pitch) for pitch in sequence): len(indices)
+        for sequence, indices in zip(env.sequences, env._sequence_clip_indices, strict=True)
+    }
     return {
         "sample_rate": env.audio_bank.sample_rate,
         "past_context_seconds": env.audio_bank.past_context_seconds,
         "future_context_seconds": env.audio_bank.future_context_seconds,
         "window_size": env.audio_bank.window_size,
         "clip_count": len(env.audio_bank),
+        "logical_sequence_count": len(env.sequences),
+        "training_variant_counts_per_sequence": variants_per_sequence,
+        "training_sampling_policy": "sample logical sequence by sequence_sampling_weights, then sample one train split acoustic variant uniformly",
         "clips": [
             {
                 "clip_id": clip.clip_id,
@@ -330,6 +337,7 @@ def _audio_bank_provenance(env: DirectAudioGoalEnv) -> dict:
                 "variant_index": clip.variant_index,
                 "velocity": clip.velocity,
                 "gain": clip.gain,
+                "split": clip.split,
                 "midi_path": str(clip.midi_path),
                 "wav_path": str(clip.wav_path),
             }

@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from ala_pianist.audio import AudioReferenceBank
 from ala_pianist.music import write_sequence_midi
+from ala_pianist.pipelines.indirect import BENCHMARK_SEQUENCE_PITCHES
 from ala_pianist.rl import (
     DirectAudioClip,
     DirectAudioGoalEnv,
@@ -49,6 +51,60 @@ def _bank_and_clips(tmp_path: Path):
     return bank, tuple(clips)
 
 
+def _bank_and_variable_variant_clips(
+    tmp_path: Path,
+    sequences,
+    variant_counts,
+    *,
+    include_eval_clip: bool = False,
+):
+    bank = AudioReferenceBank(sample_rate=16000, past_context_seconds=0.1, future_context_seconds=0.4)
+    clips = []
+    for seq_idx, sequence in enumerate(tuple(tuple(seq) for seq in sequences)):
+        midi_path = tmp_path / f"seq_{seq_idx}.mid"
+        write_sequence_midi(sequence, midi_path, midi_min=72, midi_max=76)
+        for variant_index in range(int(variant_counts[seq_idx])):
+            waveform = np.full(16000, fill_value=(seq_idx + 1) / 20.0 + variant_index / 200.0, dtype=np.float32)
+            clip_id = bank.add_waveform(
+                waveform,
+                name=f"seq_{seq_idx}_variant_{variant_index}",
+                source_sample_rate=16000,
+                metadata={"sequence": sequence, "variant_index": variant_index, "split": "train"},
+            )
+            clips.append(
+                DirectAudioClip(
+                    sequence=sequence,
+                    midi_path=midi_path,
+                    wav_path=tmp_path / f"seq_{seq_idx}_variant_{variant_index}.wav",
+                    clip_id=clip_id,
+                    variant_index=variant_index,
+                    velocity=90,
+                    gain=0.5,
+                    split="train",
+                )
+            )
+        if include_eval_clip:
+            clip_id = bank.add_waveform(
+                np.full(16000, fill_value=0.9, dtype=np.float32),
+                name=f"seq_{seq_idx}_eval",
+                source_sample_rate=16000,
+                metadata={"sequence": sequence, "variant_index": 999, "split": "eval"},
+            )
+            clips.append(
+                DirectAudioClip(
+                    sequence=sequence,
+                    midi_path=midi_path,
+                    wav_path=tmp_path / f"seq_{seq_idx}_eval.wav",
+                    clip_id=clip_id,
+                    variant_index=999,
+                    velocity=90,
+                    gain=0.5,
+                    split="eval",
+                )
+            )
+    return bank, tuple(clips)
+
+
 def _env(tmp_path: Path) -> DirectAudioGoalEnv:
     bank, clips = _bank_and_clips(tmp_path)
     return DirectAudioGoalEnv(
@@ -68,6 +124,8 @@ def test_direct_observation_excludes_symbolic_goal_fields(tmp_path):
     env.assert_no_forbidden_observation_fields()
     assert set(obs) == {"audio", "physical"}
     assert "clip_id" not in obs
+    assert "logical_sequence_index" not in obs
+    assert "sequence" not in obs
     assert "audio_sample_index" not in obs
     assert obs["audio"].shape == (8000,)
     assert obs["physical"].shape == (118,)
@@ -139,6 +197,140 @@ def test_direct_policy_action_shape_and_gradients(tmp_path):
     gru_grad = agent.actor.audio_encoder.gru.weight_ih_l0.grad
     assert conv_grad is not None and torch.isfinite(conv_grad).all()
     assert gru_grad is not None and torch.isfinite(gru_grad).all()
+
+
+def test_sequence_weights_with_multiple_physical_variants_do_not_fail(tmp_path):
+    bank, clips = _bank_and_variable_variant_clips(
+        tmp_path,
+        BENCHMARK_SEQUENCE_PITCHES,
+        [4] * len(BENCHMARK_SEQUENCE_PITCHES),
+    )
+    weights = (0.07,) * 5 + (0.08125,) * 8
+    env = DirectAudioGoalEnv(
+        audio_bank=bank,
+        clips=clips,
+        sequences=BENCHMARK_SEQUENCE_PITCHES,
+        sequence_sampling_weights=weights,
+        reward_config=GeneralRewardConfig(),
+        horizon_steps=8,
+        seed=13,
+    )
+    obs, info = env.reset(seed=13)
+
+    assert len(clips) == 52
+    assert len(BENCHMARK_SEQUENCE_PITCHES) == 13
+    assert set(obs) == {"audio", "physical"}
+    assert info["sequence"] in BENCHMARK_SEQUENCE_PITCHES
+    assert info["split"] == "train"
+
+
+def test_every_logical_sequence_requires_eligible_training_clip(tmp_path):
+    bank, clips = _bank_and_variable_variant_clips(
+        tmp_path,
+        ((72,), (73,)),
+        [1, 0],
+        include_eval_clip=True,
+    )
+
+    with pytest.raises(ValueError, match="eligible training audio clip"):
+        DirectAudioGoalEnv(
+            audio_bank=bank,
+            clips=clips,
+            sequences=((72,), (73,)),
+            sequence_sampling_weights=(0.5, 0.5),
+            reward_config=GeneralRewardConfig(),
+            horizon_steps=8,
+            seed=13,
+        )
+
+
+def test_sequence_sampling_is_seeded_and_returns_selected_sequence_variant(tmp_path):
+    bank_a, clips_a = _bank_and_variable_variant_clips(tmp_path / "a", ((72,), (73, 74)), [3, 3])
+    bank_b, clips_b = _bank_and_variable_variant_clips(tmp_path / "b", ((72,), (73, 74)), [3, 3])
+    env_a = DirectAudioGoalEnv(
+        audio_bank=bank_a,
+        clips=clips_a,
+        sequences=((72,), (73, 74)),
+        sequence_sampling_weights=(0.25, 0.75),
+        reward_config=GeneralRewardConfig(),
+        horizon_steps=8,
+        seed=37,
+    )
+    env_b = DirectAudioGoalEnv(
+        audio_bank=bank_b,
+        clips=clips_b,
+        sequences=((72,), (73, 74)),
+        sequence_sampling_weights=(0.25, 0.75),
+        reward_config=GeneralRewardConfig(),
+        horizon_steps=8,
+        seed=37,
+    )
+
+    draws_a = [env_a._sample_clip_index() for _ in range(20)]
+    draws_b = [env_b._sample_clip_index() for _ in range(20)]
+
+    assert draws_a == draws_b
+    for sequence_index, clip_index in draws_a:
+        assert clips_a[clip_index].sequence == env_a.sequences[sequence_index]
+        assert clips_a[clip_index].split == "train"
+
+
+def test_unequal_variant_counts_do_not_change_logical_task_probability(tmp_path):
+    bank, clips = _bank_and_variable_variant_clips(tmp_path, ((72,), (73,)), [8, 1])
+    env = DirectAudioGoalEnv(
+        audio_bank=bank,
+        clips=clips,
+        sequences=((72,), (73,)),
+        sequence_sampling_weights=(0.5, 0.5),
+        reward_config=GeneralRewardConfig(),
+        horizon_steps=8,
+        seed=13,
+    )
+
+    sequence_counts = np.zeros(2, dtype=np.int64)
+    for _ in range(2000):
+        sequence_index, clip_index = env._sample_clip_index()
+        sequence_counts[sequence_index] += 1
+        assert clips[clip_index].sequence == env.sequences[sequence_index]
+
+    observed = sequence_counts / sequence_counts.sum()
+    np.testing.assert_allclose(observed, [0.5, 0.5], atol=0.05)
+
+
+def test_invalid_sequence_weight_count_fails_early(tmp_path):
+    bank, clips = _bank_and_variable_variant_clips(tmp_path, ((72,), (73,)), [1, 1])
+
+    with pytest.raises(ValueError, match="Expected 2 sampling weights"):
+        DirectAudioGoalEnv(
+            audio_bank=bank,
+            clips=clips,
+            sequences=((72,), (73,)),
+            sequence_sampling_weights=(1.0,),
+            reward_config=GeneralRewardConfig(),
+            horizon_steps=8,
+            seed=13,
+        )
+
+
+def test_phase_a_anchor_transition_sampling_mass_matches_design(tmp_path):
+    bank, clips = _bank_and_variable_variant_clips(
+        tmp_path,
+        BENCHMARK_SEQUENCE_PITCHES,
+        [2] * len(BENCHMARK_SEQUENCE_PITCHES),
+    )
+    weights = (0.07,) * 5 + (0.08125,) * 8
+    env = DirectAudioGoalEnv(
+        audio_bank=bank,
+        clips=clips,
+        sequences=BENCHMARK_SEQUENCE_PITCHES,
+        sequence_sampling_weights=weights,
+        reward_config=GeneralRewardConfig(),
+        horizon_steps=8,
+        seed=13,
+    )
+
+    assert float(env.sequence_sampling_weights[:5].sum()) == pytest.approx(0.35)
+    assert float(env.sequence_sampling_weights[5:].sum()) == pytest.approx(0.65)
 
 
 def test_indexed_replay_resolves_audio_windows_without_storing_them(tmp_path):

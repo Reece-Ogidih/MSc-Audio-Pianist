@@ -48,6 +48,7 @@ class DirectAudioClip:
     variant_index: int
     velocity: int
     gain: float
+    split: str = "train"
 
 
 class DirectAudioGoalEnv(gym.Env):
@@ -84,6 +85,7 @@ class DirectAudioGoalEnv(gym.Env):
         self.seed_value = int(seed)
         self._rng = np.random.default_rng(self.seed_value)
         self._base_env_cache: dict[int, GeneralOneHandGoalEnv] = {}
+        self._active_sequence_index = 0
         self._active_clip_index = 0
         self._step_count = 0
 
@@ -101,6 +103,11 @@ class DirectAudioGoalEnv(gym.Env):
         self.clips = tuple(clips)
         if not self.clips:
             raise ValueError("DirectAudioGoalEnv requires at least one audio clip.")
+        self._sequence_clip_indices = _sequence_clip_indices(
+            sequences=self.sequences,
+            clips=self.clips,
+            split="train",
+        )
 
         sample_env = self._base_env_for_clip_index(0)
         sample_env.reset(seed=self.seed_value)
@@ -135,7 +142,7 @@ class DirectAudioGoalEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(int(seed))
         self._step_count = 0
-        self._active_clip_index = int(self._rng.choice(len(self.clips), p=self.sequence_sampling_weights))
+        self._active_sequence_index, self._active_clip_index = self._sample_clip_index()
         env = self._base_env_for_clip_index(self._active_clip_index)
         env.reset(seed=None if seed is None else int(seed))
         return self._observation(), self._info(env)
@@ -201,8 +208,11 @@ class DirectAudioGoalEnv(gym.Env):
         metadata = self.replay_metadata()
         return {
             "clip_id": metadata["clip_id"],
+            "logical_sequence_index": int(self._active_sequence_index),
             "audio_sample_index": metadata["audio_sample_index"],
             "sequence": clip.sequence,
+            "variant_index": int(clip.variant_index),
+            "split": clip.split,
             "midi_path": str(clip.midi_path),
             "wav_path": str(clip.wav_path),
             "policy_observation_fields": ("audio", "physical"),
@@ -210,6 +220,12 @@ class DirectAudioGoalEnv(gym.Env):
             "hidden_target_keys": env.current_target_keys(),
             "pressed_keys": env.current_pressed_keys(),
         }
+
+    def _sample_clip_index(self) -> tuple[int, int]:
+        sequence_index = int(self._rng.choice(len(self.sequences), p=self.sequence_sampling_weights))
+        eligible_clip_indices = self._sequence_clip_indices[sequence_index]
+        clip_index = int(self._rng.choice(eligible_clip_indices))
+        return sequence_index, clip_index
 
     def _base_env_for_clip_index(self, clip_index: int) -> GeneralOneHandGoalEnv:
         clip_index = int(clip_index)
@@ -321,9 +337,44 @@ def build_direct_audio_reference_bank(
                     variant_index=variant_index,
                     velocity=velocity,
                     gain=gain,
+                    split="train",
                 )
             )
     return bank, tuple(clips)
+
+
+def _sequence_clip_indices(
+    *,
+    sequences: tuple[tuple[int, ...], ...],
+    clips: tuple[DirectAudioClip, ...],
+    split: str = "train",
+) -> tuple[tuple[int, ...], ...]:
+    sequence_to_logical_index = {tuple(sequence): index for index, sequence in enumerate(sequences)}
+    if len(sequence_to_logical_index) != len(sequences):
+        raise ValueError("DirectAudioGoalEnv sequences must be unique.")
+    grouped: list[list[int]] = [[] for _ in sequences]
+    unknown_sequences = set()
+    for clip_index, clip in enumerate(clips):
+        if clip.split != split:
+            continue
+        sequence = tuple(int(pitch) for pitch in clip.sequence)
+        logical_index = sequence_to_logical_index.get(sequence)
+        if logical_index is None:
+            unknown_sequences.add(sequence)
+            continue
+        grouped[logical_index].append(int(clip_index))
+    missing = [sequences[index] for index, indices in enumerate(grouped) if not indices]
+    if missing:
+        raise ValueError(
+            "Every logical sequence must have at least one eligible training audio clip. "
+            f"Missing sequences for split {split!r}: {missing}."
+        )
+    if unknown_sequences:
+        raise ValueError(
+            "Audio clips include sequences that are not in the DirectAudioGoalEnv curriculum: "
+            f"{sorted(unknown_sequences)}."
+        )
+    return tuple(tuple(indices) for indices in grouped)
 
 
 def _normalise_weights(weights: tuple[float, ...] | None, count: int) -> np.ndarray | None:

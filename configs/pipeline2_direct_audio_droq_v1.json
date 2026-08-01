@@ -1,0 +1,85 @@
+{
+  "pipeline": "pipeline2_direct_audio_v1",
+  "selected_training_route": "DIRECT_RL",
+  "seeds": [13, 37],
+  "training_algorithm": "DroQ-style SAC from scratch",
+  "policy_inputs": {
+    "musical_instruction": "raw waveform only",
+    "physical_state_whitelist": [
+      "piano/state",
+      "piano/sustain_state",
+      "rh_shadow_hand/joints_pos",
+      "rh_shadow_hand/position"
+    ],
+    "forbidden_fields": [
+      "goal",
+      "fingering",
+      "phase",
+      "MIDI",
+      "TimedNote",
+      "ControllerGoalSequence",
+      "Basic Pitch outputs"
+    ]
+  },
+  "task": {
+    "midi_range": [72, 76],
+    "anchors": [[72], [73], [74], [75], [76]],
+    "transitions": [[72, 73], [73, 72], [73, 74], [74, 73], [74, 75], [75, 74], [75, 76], [76, 75]],
+    "sequence_sampling_weights": [
+      0.07,
+      0.07,
+      0.07,
+      0.07,
+      0.07,
+      0.08125,
+      0.08125,
+      0.08125,
+      0.08125,
+      0.08125,
+      0.08125,
+      0.08125,
+      0.08125
+    ],
+    "timing_profile": "aligned",
+    "note_duration_seconds": 0.28,
+    "gap_seconds": 0.12,
+    "action_mode": "direct",
+    "action_repeat": 1,
+    "lookahead_for_hidden_reward_env": 1,
+    "reward_profile": "transition_cleanup_sensitive_v1"
+  },
+  "audio": {
+    "sample_rate_hz": 16000,
+    "past_context_seconds": 0.1,
+    "future_context_seconds": 0.4,
+    "window_samples": 8000,
+    "training_variants_per_sequence": 4,
+    "allowed_training_variation": ["velocity", "global_gain"],
+    "canonical_evaluation_audio": "FluidSynth TimGM6mb.sf2 rendered benchmark"
+  },
+  "model": {
+    "audio_frontend": "Conv1D stack",
+    "temporal_model": "GRU",
+    "audio_latent_dim": 128,
+    "fusion": "audio latent + physical state -> MLP",
+    "action_dim": 22
+  },
+  "phase_a": {
+    "first_formal_decision_steps": 1000000,
+    "maximum_prepared_steps": 2000000,
+    "lightweight_eval_steps": [0, 10000, 25000, 50000, 100000, 250000, 500000, 750000, 1000000, 1250000, 1500000, 1750000, 2000000],
+    "phase_a_lightweight_checkpoint_steps": [10000, 25000, 50000, 100000, 250000, 500000, 750000, 1000000],
+    "full_resumable_checkpoint_steps": [1000000, 1500000, 2000000],
+    "phase_a_full_resumable_checkpoint_steps": [1000000],
+    "continue_to_2m_rule": "Continue only if 1M metrics show meaningful learning trend, audio dependence, and no collapse; do not continue merely because performance is below Pipeline 1."
+  },
+  "storage_estimates": {
+    "indexed_replay_bytes_per_transition": 1064,
+    "indexed_replay_1m_gb": 1.064,
+    "indexed_replay_2m_gb": 2.128,
+    "naive_waveform_replay_1m_gb": 64.0,
+    "phase_a_per_seed_expected_gb": "1.2-1.8",
+    "phase_a_two_seed_expected_gb": "2.4-3.6",
+    "later_full_checkpoints_1m_1p5m_2m_per_seed_gb": "5-7"
+  }
+}

@@ -73,10 +73,12 @@ class DirectAudioGoalEnv(gym.Env):
         reward_config: GeneralRewardConfig | None = None,
         seed: int = 13,
         variants_per_sequence: int = 1,
+        sampling_split: str = "train",
     ):
         super().__init__()
         self.sequences = tuple(tuple(int(p) for p in seq) for seq in sequences)
         self.sequence_sampling_weights = _normalise_weights(sequence_sampling_weights, len(self.sequences))
+        self.sampling_split = str(sampling_split)
         self.sequence_timing = sequence_timing_from_profile(sequence_timing_profile)
         self.sequence_timing_profile = str(sequence_timing_profile)
         self.lookahead = int(lookahead)
@@ -106,7 +108,7 @@ class DirectAudioGoalEnv(gym.Env):
         self._sequence_clip_indices = _sequence_clip_indices(
             sequences=self.sequences,
             clips=self.clips,
-            split="train",
+            split=self.sampling_split,
         )
 
         sample_env = self._base_env_for_clip_index(0)
@@ -143,6 +145,27 @@ class DirectAudioGoalEnv(gym.Env):
             self._rng = np.random.default_rng(int(seed))
         self._step_count = 0
         self._active_sequence_index, self._active_clip_index = self._sample_clip_index()
+        env = self._base_env_for_clip_index(self._active_clip_index)
+        env.reset(seed=None if seed is None else int(seed))
+        return self._observation(), self._info(env)
+
+    def reset_to_clip_index(self, clip_index: int, *, seed: int | None = None):
+        """Reset deterministically to a known clip for evaluation.
+
+        This selects the underlying task/audio metadata but does not expose clip
+        or sequence IDs in the policy observation.
+        """
+
+        super().reset(seed=seed)
+        if seed is not None:
+            self._rng = np.random.default_rng(int(seed))
+        self._step_count = 0
+        self._active_clip_index = int(clip_index)
+        clip_sequence = tuple(self.clips[self._active_clip_index].sequence)
+        try:
+            self._active_sequence_index = self.sequences.index(clip_sequence)
+        except ValueError as exc:
+            raise ValueError(f"Clip sequence {clip_sequence} is not in the evaluation sequence set.") from exc
         env = self._base_env_for_clip_index(self._active_clip_index)
         env.reset(seed=None if seed is None else int(seed))
         return self._observation(), self._info(env)
@@ -272,6 +295,7 @@ def build_direct_audio_reference_bank(
     future_context_seconds: float = 0.40,
     sequence_timing_profile: str = "aligned",
     variants_per_sequence: int = 1,
+    split: str = "train",
 ) -> tuple[AudioReferenceBank, tuple[DirectAudioClip, ...]]:
     root = Path(generated_root)
     midi_dir = root / "midi"
@@ -325,6 +349,7 @@ def build_direct_audio_reference_bank(
                     "variant_index": variant_index,
                     "velocity": velocity,
                     "gain": gain,
+                    "split": split,
                     "midi_path": str(midi_path),
                 },
             )
@@ -337,7 +362,7 @@ def build_direct_audio_reference_bank(
                     variant_index=variant_index,
                     velocity=velocity,
                     gain=gain,
-                    split="train",
+                    split=split,
                 )
             )
     return bank, tuple(clips)

@@ -398,16 +398,57 @@ def direct_rng_state_dict() -> dict[str, Any]:
 def restore_direct_rng_state(state: dict[str, Any] | None) -> None:
     if not state:
         return
+    if "python" not in state:
+        raise ValueError("Direct RNG checkpoint is missing required 'python' state.")
+    if "numpy" not in state:
+        raise ValueError("Direct RNG checkpoint is missing required 'numpy' state.")
     if "python" in state:
         random.setstate(state["python"])
     if "numpy" in state:
         np.random.set_state(state["numpy"])
     if "torch_cpu" in state:
-        torch.random.set_rng_state(state["torch_cpu"])
+        torch.random.set_rng_state(_normalise_torch_rng_state(state["torch_cpu"], name="torch_cpu"))
     elif "torch" in state:
-        torch.random.set_rng_state(state["torch"])
+        torch.random.set_rng_state(_normalise_torch_rng_state(state["torch"], name="torch"))
+    else:
+        raise ValueError("Direct RNG checkpoint is missing required torch CPU RNG state.")
     if torch.cuda.is_available() and "torch_cuda" in state:
-        torch.cuda.set_rng_state_all(state["torch_cuda"])
+        cuda_states = state["torch_cuda"]
+        if not isinstance(cuda_states, (list, tuple)):
+            raise TypeError(
+                "Direct RNG checkpoint field 'torch_cuda' must be a list/tuple of CUDA RNG states, "
+                f"got {type(cuda_states).__name__}."
+            )
+        torch.cuda.set_rng_state_all(
+            [_normalise_torch_rng_state(value, name=f"torch_cuda[{idx}]") for idx, value in enumerate(cuda_states)]
+        )
+
+
+def _normalise_torch_rng_state(value: Any, *, name: str) -> torch.Tensor:
+    """Return a contiguous CPU torch.uint8 tensor for torch RNG restoration."""
+
+    if isinstance(value, torch.Tensor):
+        tensor = value.detach().to(device="cpu")
+        if tensor.dtype != torch.uint8:
+            raise TypeError(f"Direct RNG checkpoint field {name!r} must have dtype torch.uint8, got {tensor.dtype}.")
+        return tensor.contiguous()
+    if isinstance(value, np.ndarray):
+        if value.dtype != np.uint8:
+            raise TypeError(f"Direct RNG checkpoint field {name!r} must have dtype uint8, got {value.dtype}.")
+        return torch.from_numpy(np.ascontiguousarray(value)).to(dtype=torch.uint8, device="cpu").contiguous()
+    if isinstance(value, (list, tuple)):
+        array = np.asarray(value)
+        if array.dtype.kind not in {"u", "i"}:
+            raise TypeError(
+                f"Direct RNG checkpoint field {name!r} must contain integer byte values, got dtype {array.dtype}."
+            )
+        if array.size and (array.min() < 0 or array.max() > 255):
+            raise ValueError(f"Direct RNG checkpoint field {name!r} contains values outside byte range 0..255.")
+        return torch.as_tensor(np.ascontiguousarray(array, dtype=np.uint8), dtype=torch.uint8, device="cpu").contiguous()
+    raise TypeError(
+        f"Direct RNG checkpoint field {name!r} must be a torch.Tensor, numpy.ndarray, list, or tuple; "
+        f"got {type(value).__name__}."
+    )
 
 
 def load_direct_droq_checkpoint(path: str | Path, *, device: str | None = None) -> dict[str, Any]:

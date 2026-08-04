@@ -172,6 +172,10 @@ def main() -> None:
     checkpoint_dir = output_dir / "checkpoints"
     lightweight_dir = output_dir / "lightweight_checkpoints"
     losses = []
+    print(f"resume_semantics={resume_semantics}")
+    print(f"start_step={start_step}")
+    print(f"steps_to_run={steps_to_run}")
+    print(f"final_target_step={start_step + steps_to_run}")
     start = time.time()
     last_info = info
     last_full_checkpoint_path: Path | None = None

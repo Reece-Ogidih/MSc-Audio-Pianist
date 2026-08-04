@@ -16,8 +16,11 @@ from ala_pianist.rl import (
     DirectDroQConfig,
     GeneralRewardConfig,
     IndexedDirectReplayBuffer,
+    direct_rng_state_dict,
     indexed_replay_from_checkpoint,
     load_direct_droq_checkpoint,
+    restore_direct_rng_state,
+    set_direct_droq_seed,
 )
 
 
@@ -386,6 +389,51 @@ def test_full_checkpoint_contains_resume_state_and_indexed_replay(tmp_path):
         fallback_capacity=4,
     )
     assert restored.size == 1
+
+
+def test_restore_direct_rng_state_accepts_torch_uint8_tensor():
+    set_direct_droq_seed(123)
+    state = direct_rng_state_dict()
+
+    restore_direct_rng_state(state)
+
+    assert state["torch_cpu"].dtype == torch.uint8
+
+
+def test_restore_direct_rng_state_accepts_list_serialised_torch_state():
+    set_direct_droq_seed(123)
+    state = direct_rng_state_dict()
+    state["torch_cpu"] = state["torch_cpu"].tolist()
+
+    restore_direct_rng_state(state)
+
+
+def test_restore_direct_rng_state_accepts_numpy_uint8_torch_state():
+    set_direct_droq_seed(123)
+    state = direct_rng_state_dict()
+    state["torch_cpu"] = state["torch_cpu"].numpy().copy()
+
+    restore_direct_rng_state(state)
+
+
+def test_restore_direct_rng_state_round_trip_reproduces_random_draws():
+    set_direct_droq_seed(456)
+    state = direct_rng_state_dict()
+    torch_draw = torch.rand(4)
+    numpy_draw = np.random.rand(4)
+
+    restore_direct_rng_state(state)
+
+    torch.testing.assert_close(torch.rand(4), torch_draw)
+    np.testing.assert_allclose(np.random.rand(4), numpy_draw)
+
+
+def test_restore_direct_rng_state_malformed_torch_state_fails_clearly():
+    state = direct_rng_state_dict()
+    state["torch_cpu"] = ["not", "bytes"]
+
+    with pytest.raises(TypeError, match="integer byte values"):
+        restore_direct_rng_state(state)
 
 
 def test_no_basic_pitch_or_timed_note_calls_in_direct_policy_inference(monkeypatch, tmp_path):

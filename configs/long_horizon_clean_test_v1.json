@@ -1,0 +1,252 @@
+{
+  "benchmark_name": "long_horizon_clean_test_v1",
+  "key_index_mapping": "key_index = midi_pitch - 21",
+  "midi_pitches": [
+    72,
+    73,
+    74,
+    75,
+    76
+  ],
+  "name": "long_horizon_clean_test_v1",
+  "note_duration": 0.28,
+  "note_gap": 0.12,
+  "role": "clean_test",
+  "seed": 20260808,
+  "sequence_timing_profile": "aligned",
+  "sequences": [
+    {
+      "archetype": "clean_test_short",
+      "key_indices": [
+        53,
+        55,
+        54
+      ],
+      "length": 3,
+      "midi_tuple_hash": "73057fb5c14317d7fd206997e4a16c9f3a5a712261ae123ba47957308b7623b4",
+      "name": "clean_test_000_len3",
+      "pitches": [
+        74,
+        76,
+        75
+      ]
+    },
+    {
+      "archetype": "clean_test_short",
+      "key_indices": [
+        52,
+        51,
+        53
+      ],
+      "length": 3,
+      "midi_tuple_hash": "0b00bcdfdcec42117b9a0694ab62b1ae48fdfc9582d13906dc3c335b2a785a88",
+      "name": "clean_test_001_len3",
+      "pitches": [
+        73,
+        72,
+        74
+      ]
+    },
+    {
+      "archetype": "clean_test_short",
+      "key_indices": [
+        53,
+        55,
+        54,
+        52,
+        51
+      ],
+      "length": 5,
+      "midi_tuple_hash": "6979d522149d177665c016f7de3e73965f63dcb523b22a4e9bf9db76f7cb3a4a",
+      "name": "clean_test_002_len5",
+      "pitches": [
+        74,
+        76,
+        75,
+        73,
+        72
+      ]
+    },
+    {
+      "archetype": "clean_test_short",
+      "key_indices": [
+        51,
+        54,
+        52,
+        55,
+        53
+      ],
+      "length": 5,
+      "midi_tuple_hash": "9293edccfbd82a1dfa1d407e22273e058777bfd6841e15a22330e08dec64c5e8",
+      "name": "clean_test_003_len5",
+      "pitches": [
+        72,
+        75,
+        73,
+        76,
+        74
+      ]
+    },
+    {
+      "archetype": "clean_test_medium",
+      "key_indices": [
+        53,
+        55,
+        54,
+        52,
+        51,
+        53,
+        54,
+        55,
+        52,
+        51
+      ],
+      "length": 10,
+      "midi_tuple_hash": "d77819121a60ba237f0264d68ec9063d91a9d94935e8f98d0c57f64c7068a218",
+      "name": "clean_test_004_len10",
+      "pitches": [
+        74,
+        76,
+        75,
+        73,
+        72,
+        74,
+        75,
+        76,
+        73,
+        72
+      ]
+    },
+    {
+      "archetype": "clean_test_medium",
+      "key_indices": [
+        51,
+        53,
+        55,
+        52,
+        54,
+        51,
+        55,
+        53,
+        54,
+        52
+      ],
+      "length": 10,
+      "midi_tuple_hash": "ba901d0adddde2797ef5e2695c75b2cfe1a6ae4ccf1f1bec08becab25fdb2892",
+      "name": "clean_test_005_len10",
+      "pitches": [
+        72,
+        74,
+        76,
+        73,
+        75,
+        72,
+        76,
+        74,
+        75,
+        73
+      ]
+    },
+    {
+      "archetype": "clean_test_long",
+      "key_indices": [
+        53,
+        55,
+        54,
+        52,
+        51,
+        53,
+        55,
+        52,
+        54,
+        51,
+        53,
+        54,
+        55,
+        52,
+        51,
+        54,
+        53,
+        55,
+        52,
+        51
+      ],
+      "length": 20,
+      "midi_tuple_hash": "6b659a869bef80e36e79a52c44924739085b1c0da3f4c930bc5334ed190108a3",
+      "name": "clean_test_006_len20",
+      "pitches": [
+        74,
+        76,
+        75,
+        73,
+        72,
+        74,
+        76,
+        73,
+        75,
+        72,
+        74,
+        75,
+        76,
+        73,
+        72,
+        75,
+        74,
+        76,
+        73,
+        72
+      ]
+    },
+    {
+      "archetype": "clean_test_long",
+      "key_indices": [
+        51,
+        54,
+        52,
+        55,
+        53,
+        51,
+        55,
+        54,
+        52,
+        53,
+        51,
+        54,
+        55,
+        52,
+        53,
+        51,
+        55,
+        54,
+        53,
+        52
+      ],
+      "length": 20,
+      "midi_tuple_hash": "f21282b1d2783d4422ab67e33d2fcf522d2926937461b9452718b47c5972df01",
+      "name": "clean_test_007_len20",
+      "pitches": [
+        72,
+        75,
+        73,
+        76,
+        74,
+        72,
+        76,
+        75,
+        73,
+        74,
+        72,
+        75,
+        76,
+        73,
+        74,
+        72,
+        76,
+        75,
+        74,
+        73
+      ]
+    }
+  ],
+  "velocity": 90
+}

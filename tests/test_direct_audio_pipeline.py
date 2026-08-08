@@ -391,6 +391,32 @@ def test_full_checkpoint_contains_resume_state_and_indexed_replay(tmp_path):
     assert restored.size == 1
 
 
+def test_curriculum_warm_start_uses_agent_state_but_fresh_indexed_replay(tmp_path):
+    env = _env(tmp_path)
+    obs, _ = env.reset(seed=13)
+    action = np.zeros(22, dtype=np.float32)
+    metadata = env.replay_metadata()
+    next_obs, reward, terminated, truncated, _ = env.step(action)
+    replay = IndexedDirectReplayBuffer(physical_dim=118, action_dim=22, capacity=4)
+    replay.add(obs, metadata, action, reward, next_obs, env.replay_metadata(), terminated or truncated)
+    agent = DirectDroQAgent(DirectDroQConfig(audio_window_size=8000, physical_dim=118, action_dim=22))
+    path = tmp_path / "warm_start_source.pt"
+    agent.save(path, replay_buffer=replay, extra={"step": 1_000_000, "checkpoint_class": "full_resumable"})
+
+    loaded = DirectDroQAgent.load(path)
+    fresh_replay = IndexedDirectReplayBuffer(
+        physical_dim=loaded.config.physical_dim,
+        action_dim=loaded.config.action_dim,
+        capacity=loaded.config.buffer_size,
+    )
+
+    assert load_direct_droq_checkpoint(path)["replay_buffer"]["size"] == 1
+    assert fresh_replay.size == 0
+    original = dict(agent.actor.named_parameters())["audio_encoder.conv.0.weight"]
+    restored = dict(loaded.actor.named_parameters())["audio_encoder.conv.0.weight"]
+    torch.testing.assert_close(original, restored)
+
+
 def test_restore_direct_rng_state_accepts_torch_uint8_tensor():
     set_direct_droq_seed(123)
     state = direct_rng_state_dict()

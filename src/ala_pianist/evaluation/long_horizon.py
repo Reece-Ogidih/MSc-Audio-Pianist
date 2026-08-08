@@ -40,7 +40,11 @@ class LongHorizonBenchmark:
     sequences: tuple[LongHorizonSequence, ...]
 
 
-def load_long_horizon_benchmark(path: str | Path) -> LongHorizonBenchmark:
+def load_long_horizon_benchmark(
+    path: str | Path,
+    *,
+    allow_trained_short: bool = False,
+) -> LongHorizonBenchmark:
     """Load and validate the tracked long-horizon manifest."""
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -58,7 +62,7 @@ def load_long_horizon_benchmark(path: str | Path) -> LongHorizonBenchmark:
         pitches = tuple(int(pitch) for pitch in item["pitches"])
         if len(pitches) != int(item["length"]):
             raise ValueError(f"{item['name']} length metadata does not match pitches.")
-        if pitches in trained_short:
+        if not allow_trained_short and pitches in trained_short:
             raise ValueError(f"{item['name']} is an original anchor/two-note transition.")
         if not set(pitches).issubset(allowed):
             raise ValueError(f"{item['name']} contains pitches outside {sorted(allowed)}.")

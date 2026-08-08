@@ -17,6 +17,7 @@ from ala_pianist.evaluation.metrics import binary_key_vector
 
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 MANIFEST = ROOT / "configs" / "long_horizon_compositional_v1.json"
+PAIRWISE_MANIFEST = ROOT / "configs" / "complete_pairwise_v1.json"
 
 
 def test_long_horizon_manifest_has_expected_lengths_and_no_training_sequences() -> None:
@@ -36,6 +37,19 @@ def test_long_horizon_manifest_has_expected_lengths_and_no_training_sequences() 
     counts = sequence_counts_by_length_and_archetype(benchmark.sequences)
     assert len(counts) == 20
     assert all(row["sequence_count"] == 1 for row in counts)
+
+
+def test_pairwise_manifest_requires_explicit_short_primitive_opt_in() -> None:
+    with pytest.raises(ValueError, match="original anchor/two-note transition"):
+        load_long_horizon_benchmark(PAIRWISE_MANIFEST)
+
+    benchmark = load_long_horizon_benchmark(PAIRWISE_MANIFEST, allow_trained_short=True)
+
+    assert benchmark.benchmark_name == "complete_pairwise_v1"
+    assert len(benchmark.sequences) == 30
+    assert sum(sequence.length == 1 for sequence in benchmark.sequences) == 5
+    assert sum(sequence.length == 2 for sequence in benchmark.sequences) == 25
+    assert any(sequence.pitches == (72, 72) for sequence in benchmark.sequences)
 
 
 def test_horizon_steps_scales_with_sequence_duration() -> None:

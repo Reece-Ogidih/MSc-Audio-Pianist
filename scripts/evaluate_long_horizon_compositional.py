@@ -64,11 +64,20 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--allow-short-primitives", action="store_true")
     parser.add_argument("--max-sequences", type=int, default=None)
     parser.add_argument("--pipeline1-transcriber", choices=["basic_pitch", "generated_wav_peak"], default="basic_pitch")
+    parser.add_argument("--pipeline1-controller", type=Path, default=DEFAULT_SYMBOLIC_CONTROLLER)
     parser.add_argument("--skip-pipeline1", action="store_true")
     parser.add_argument("--skip-pipeline2", action="store_true")
-    parser.add_argument("--pipeline2-model", action="append", choices=sorted(PIPELINE2_CHECKPOINTS), default=None)
+    parser.add_argument("--pipeline2-model", action="append", default=None)
+    parser.add_argument(
+        "--pipeline2-checkpoint-path",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="Additional Pipeline 2 checkpoint path, usable with --pipeline2-model LABEL.",
+    )
     parser.add_argument("--include-audio-interventions", action="store_true")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seed", type=int, default=20260808)
@@ -81,7 +90,10 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    benchmark = load_long_horizon_benchmark(args.manifest)
+    benchmark = load_long_horizon_benchmark(
+        args.manifest,
+        allow_trained_short=args.allow_short_primitives,
+    )
     sequences = list(benchmark.sequences)
     if args.smoke:
         sequences = [sequence for sequence in sequences if sequence.length in {3, 5}][:2]
@@ -92,7 +104,13 @@ def main() -> None:
     if not sequences:
         raise ValueError("No long-horizon sequences selected.")
 
-    checkpoint_audit = _audit_checkpoints(args.pipeline2_model)
+    pipeline2_checkpoints = _pipeline2_checkpoint_specs(args.pipeline2_checkpoint_path)
+    checkpoint_labels = args.pipeline2_model or list(pipeline2_checkpoints)
+    checkpoint_audit = _audit_checkpoints(
+        checkpoint_labels,
+        pipeline1_controller=args.pipeline1_controller,
+        pipeline2_checkpoints=pipeline2_checkpoints,
+    )
     soundfont = find_default_soundfont()
     items = _render_benchmark_items(
         sequences,
@@ -114,7 +132,7 @@ def main() -> None:
         p1_sequence_rows, p1_transcription_rows, p1_event_rows = _evaluate_pipeline1(
             items=items,
             output_dir=output_dir / "pipeline1",
-            controller_checkpoint=DEFAULT_SYMBOLIC_CONTROLLER,
+            controller_checkpoint=args.pipeline1_controller,
             transcriber_name=args.pipeline1_transcriber,
             config=IndirectPipelineConfig(
                 midi_min=min(benchmark.midi_pitches),
@@ -138,7 +156,8 @@ def main() -> None:
             sequences=selected_sequences,
             items=items,
             output_dir=output_dir / "pipeline2",
-            checkpoint_labels=args.pipeline2_model or list(PIPELINE2_CHECKPOINTS),
+            checkpoint_labels=checkpoint_labels,
+            pipeline2_checkpoints=pipeline2_checkpoints,
             horizon_steps=max_horizon,
             seed=args.seed,
             device=args.device,
@@ -197,20 +216,38 @@ def main() -> None:
     print("LONG_HORIZON_EVALUATION_COMPLETE=true")
 
 
-def _audit_checkpoints(selected_labels: list[str] | None) -> dict[str, Any]:
-    labels = selected_labels or list(PIPELINE2_CHECKPOINTS)
+def _pipeline2_checkpoint_specs(extra_specs: list[str]) -> dict[str, Path]:
+    specs = dict(PIPELINE2_CHECKPOINTS)
+    for spec in extra_specs:
+        if "=" not in spec:
+            raise ValueError(f"--pipeline2-checkpoint-path must be LABEL=PATH, got {spec!r}.")
+        label, path = spec.split("=", 1)
+        label = label.strip()
+        if not label:
+            raise ValueError("--pipeline2-checkpoint-path label must not be empty.")
+        specs[label] = Path(path)
+    return specs
+
+
+def _audit_checkpoints(
+    selected_labels: list[str],
+    *,
+    pipeline1_controller: Path,
+    pipeline2_checkpoints: dict[str, Path],
+) -> dict[str, Any]:
+    labels = selected_labels
     audit = {
         "pipeline1_symbolic_controller": {
-            "path": str(DEFAULT_SYMBOLIC_CONTROLLER),
-            "exists": DEFAULT_SYMBOLIC_CONTROLLER.is_file(),
-            "sha256": sha256_file(DEFAULT_SYMBOLIC_CONTROLLER) if DEFAULT_SYMBOLIC_CONTROLLER.is_file() else None,
+            "path": str(pipeline1_controller),
+            "exists": pipeline1_controller.is_file(),
+            "sha256": sha256_file(pipeline1_controller) if pipeline1_controller.is_file() else None,
         },
         "pipeline2": {},
     }
-    if not DEFAULT_SYMBOLIC_CONTROLLER.is_file():
-        raise FileNotFoundError(f"Frozen Pipeline 1 controller not found: {DEFAULT_SYMBOLIC_CONTROLLER}")
+    if not pipeline1_controller.is_file():
+        raise FileNotFoundError(f"Pipeline 1 controller not found: {pipeline1_controller}")
     for label in labels:
-        path = PIPELINE2_CHECKPOINTS[label]
+        path = pipeline2_checkpoints[label]
         if not path.is_file():
             raise FileNotFoundError(f"Pipeline 2 checkpoint {label} is missing: {path}")
         agent = DirectDroQAgent.load(path, device="cpu")
@@ -335,6 +372,7 @@ def _evaluate_pipeline2(
     items: tuple[RenderedBenchmarkItem, ...],
     output_dir: Path,
     checkpoint_labels: list[str],
+    pipeline2_checkpoints: dict[str, Path],
     horizon_steps: int,
     seed: int,
     device: str,
@@ -364,7 +402,7 @@ def _evaluate_pipeline2(
     audio_rows = []
     event_rows = []
     for label in checkpoint_labels:
-        path = PIPELINE2_CHECKPOINTS[label]
+        path = pipeline2_checkpoints[label]
         agent = DirectDroQAgent.load(path, device=device)
         checkpoint_hash = sha256_file(path)
         for sequence_index, sequence in enumerate(sequences):

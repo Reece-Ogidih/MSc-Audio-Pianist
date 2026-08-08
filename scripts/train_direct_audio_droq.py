@@ -72,6 +72,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timesteps", type=int, default=1000)
     parser.add_argument("--resume-checkpoint", default=None)
+    parser.add_argument("--warm-start-checkpoint", default=None)
     parser.add_argument("--additional-timesteps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--stage-name", default="pipeline2_direct_audio_droq_smoke")
@@ -93,6 +94,8 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
+    if args.resume_checkpoint and args.warm_start_checkpoint:
+        raise ValueError("--resume-checkpoint and --warm-start-checkpoint are mutually exclusive.")
     if args.resume_checkpoint and args.additional_timesteps is None:
         raise ValueError("--resume-checkpoint requires --additional-timesteps.")
     if args.resume_checkpoint and args.timesteps != 1000:
@@ -106,11 +109,12 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     start_utc = utc_now()
-    checkpoint_payload = (
-        load_direct_droq_checkpoint(args.resume_checkpoint, device=args.device)
-        if args.resume_checkpoint
-        else None
-    )
+    checkpoint_payload = None
+    warm_start_payload = None
+    if args.resume_checkpoint:
+        checkpoint_payload = load_direct_droq_checkpoint(args.resume_checkpoint, device=args.device)
+    if args.warm_start_checkpoint:
+        warm_start_payload = load_direct_droq_checkpoint(args.warm_start_checkpoint, device=args.device)
     env = DirectAudioGoalEnv(
         generated_root=args.generated_root,
         sequences=parse_sequences(args.sequence_pitches),
@@ -127,8 +131,9 @@ def main() -> None:
     )
     env.assert_no_forbidden_observation_fields()
     observation, info = env.reset(seed=args.seed)
-    if checkpoint_payload:
-        config_payload = dict(checkpoint_payload["config"])
+    source_payload = checkpoint_payload or warm_start_payload
+    if source_payload:
+        config_payload = dict(source_payload["config"])
         config_payload["device"] = args.device
         config = DirectDroQConfig(**config_payload)
         if config.audio_window_size != int(env.observation_space["audio"].shape[0]):
@@ -137,17 +142,27 @@ def main() -> None:
             raise ValueError("Resume checkpoint physical_dim does not match current env.")
         if config.action_dim != int(env.action_space.shape[0]):
             raise ValueError("Resume checkpoint action_dim does not match current env.")
-        agent = DirectDroQAgent.load(args.resume_checkpoint, device=args.device)
-        replay = indexed_replay_from_checkpoint(
-            checkpoint_payload,
-            physical_dim=config.physical_dim,
-            action_dim=config.action_dim,
-            fallback_capacity=config.buffer_size,
-        )
-        restore_direct_rng_state(checkpoint_payload.get("rng_state"))
-        start_step = int(checkpoint_payload.get("extra", {}).get("step", 0))
-        steps_to_run = int(args.additional_timesteps)
-        resume_semantics = "full_training_state_resume"
+        agent = DirectDroQAgent.load(args.resume_checkpoint or args.warm_start_checkpoint, device=args.device)
+        if checkpoint_payload:
+            replay = indexed_replay_from_checkpoint(
+                checkpoint_payload,
+                physical_dim=config.physical_dim,
+                action_dim=config.action_dim,
+                fallback_capacity=config.buffer_size,
+            )
+            restore_direct_rng_state(checkpoint_payload.get("rng_state"))
+            start_step = int(checkpoint_payload.get("extra", {}).get("step", 0))
+            steps_to_run = int(args.additional_timesteps)
+            resume_semantics = "full_training_state_resume"
+        else:
+            replay = IndexedDirectReplayBuffer(
+                physical_dim=config.physical_dim,
+                action_dim=config.action_dim,
+                capacity=config.buffer_size,
+            )
+            start_step = 0
+            steps_to_run = int(args.timesteps)
+            resume_semantics = "network_optimizer_alpha_warm_start_fresh_replay_rng_from_seed"
     else:
         config = DirectDroQConfig(
             audio_window_size=int(env.observation_space["audio"].shape[0]),
@@ -276,6 +291,7 @@ def main() -> None:
         "timesteps": int(steps_to_run),
         "final_step": int(final_step),
         "resume_checkpoint": args.resume_checkpoint,
+        "warm_start_checkpoint": args.warm_start_checkpoint,
         "resume_semantics": resume_semantics,
         "runtime_seconds": runtime_seconds,
         "throughput_steps_per_second": float(steps_to_run / max(runtime_seconds, 1e-9)),

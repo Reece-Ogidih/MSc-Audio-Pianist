@@ -40,8 +40,9 @@ git diff --quiet || fail "Repository has tracked working-tree modifications"
 git diff --cached --quiet || fail "Repository has staged modifications"
 commit="$(git rev-parse HEAD)"
 short="$(git rev-parse --short HEAD)"
-launcher_commit="$(git log -1 --format=%H -- scripts/hex/launch_paironly_and_evidence_repairs.sh)"
-[[ "${commit}" == "${launcher_commit}" ]] || fail "HEAD ${commit} is not the latest orchestrator commit ${launcher_commit}"
+minimum_safe_commit="3dfe049ec4eba05549941aec6c5ed792707fef50"
+git merge-base --is-ancestor "${minimum_safe_commit}" "${commit}" || \
+  fail "HEAD ${commit} does not contain required launch fixes from ${minimum_safe_commit}"
 echo "repository_commit=${commit}"
 echo "repository_branch=${branch}"
 

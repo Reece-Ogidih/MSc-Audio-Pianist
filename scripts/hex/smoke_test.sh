@@ -38,6 +38,10 @@ hare run --rm --gpus "device=${GPU_INDEX}" \
   bash -lc "set -euo pipefail
 export PYTHONPATH=/app/src:/app/third_party/robopianist
 export MUJOCO_GL=\${MUJOCO_GL:-egl}
+export NUMBA_CACHE_DIR=\${NUMBA_CACHE_DIR:-/tmp/ala-numba-cache}
+export XDG_CACHE_HOME=\${XDG_CACHE_HOME:-/tmp/ala-xdg-cache}
+mkdir -p "\${NUMBA_CACHE_DIR}" "\${XDG_CACHE_HOME}"
+test -w "\${NUMBA_CACHE_DIR}"
 python - <<'PY'
 from pathlib import Path
 import os
@@ -48,6 +52,9 @@ from basic_pitch import inference as basic_pitch_inference
 print('torch', torch.__version__, 'cuda', torch.version.cuda)
 print('basic_pitch', getattr(basic_pitch, '__version__', '0.4.0'), basic_pitch.__file__)
 print('onnxruntime', onnxruntime.__version__)
+print('numba_cache_dir', os.environ['NUMBA_CACHE_DIR'])
+if not os.access(os.environ['NUMBA_CACHE_DIR'], os.W_OK):
+    raise SystemExit(f"NUMBA_CACHE_DIR is not writable: {os.environ['NUMBA_CACHE_DIR']}")
 basic_pitch_model = Path(basic_pitch_inference.ICASSP_2022_MODEL_PATH).with_suffix('.onnx')
 print('basic_pitch_model', basic_pitch_model)
 if not basic_pitch_model.is_file():

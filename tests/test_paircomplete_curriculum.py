@@ -128,6 +128,22 @@ def test_pair_only_hex_wrappers_pin_sources_semantics_and_checkpoints(
     assert "Refusing to overwrite non-empty run directory" in script
 
 
+def test_atomic_pair_only_orchestrator_has_required_guards() -> None:
+    script = (ROOT / "scripts/hex/launch_paironly_and_evidence_repairs.sh").read_text()
+
+    assert "Need three idle GPUs" in script
+    assert "MAX_IDLE_MEMORY_MIB" in script
+    assert "--query-compute-apps=gpu_uuid,pid" in script
+    assert "require_hash" in script
+    assert "require_empty_destination" in script
+    assert "scripts/hex/smoke_test.sh" in script
+    assert script.index("scripts/hex/smoke_test.sh") < script.index("run_pipeline2_paironly_refinement.sh")
+    assert "run_pipeline1_paironly_refinement.sh" in script
+    assert "evaluate_refined_evidence_repairs.sh" in script
+    assert "NUMBA_CACHE_DIR=/tmp/ala-numba-cache" in script
+    assert "sleep 105" in script
+
+
 def test_training_distribution_is_balanced_and_excludes_frozen_splits() -> None:
     sequences, weights = training_distribution()
     frozen = load_frozen_test_tuples(ROOT / "configs" / "long_horizon_compositional_v1.json")

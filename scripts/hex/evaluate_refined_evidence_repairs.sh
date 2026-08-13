@@ -26,6 +26,10 @@ mkdir -p "${RUN_DIR}"
 cd "${PROJECT_ROOT}"
 export PYTHONPATH="${PROJECT_ROOT}/src:${PROJECT_ROOT}/third_party/robopianist:${PROJECT_ROOT}/scripts"
 export MUJOCO_GL="${MUJOCO_GL:-egl}"
+export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-/tmp/ala-numba-cache}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/ala-xdg-cache}"
+mkdir -p "${NUMBA_CACHE_DIR}" "${XDG_CACHE_HOME}"
+[[ -w "${NUMBA_CACHE_DIR}" ]] || { echo "NUMBA_CACHE_DIR is not writable: ${NUMBA_CACHE_DIR}" >&2; exit 4; }
 python -c 'from basic_pitch import inference; from pathlib import Path; p=Path(inference.ICASSP_2022_MODEL_PATH).with_suffix(".onnx"); assert p.is_file(), p; print(f"basic_pitch_onnx={p}")'
 
 run_p1_basic_pitch() {

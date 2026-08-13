@@ -41,11 +41,16 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 WORKDIR /opt/ala-pianist-runtime
 COPY requirements.txt /opt/ala-pianist-runtime/requirements.txt
 COPY torch-constraints.txt /opt/ala-pianist-runtime/torch-constraints.txt
+# The evaluator uses Basic Pitch's bundled ONNX model. Install the package
+# without its unused TensorFlow Lite runtime in this CUDA image.
 RUN python -m pip install \
       --constraint /opt/ala-pianist-runtime/torch-constraints.txt \
       -r /opt/ala-pianist-runtime/requirements.txt \
+    && python -m pip install --no-deps basic-pitch==0.4.0 \
     && python - <<'PY'
 import platform
+from pathlib import Path
+from basic_pitch import inference as basic_pitch_inference
 import dm_control
 import dm_env_wrappers
 import mujoco
@@ -60,6 +65,7 @@ print("mujoco", mujoco.__version__)
 print("dm_control", dm_control.__file__)
 print("mujoco_utils", mujoco_utils.__file__)
 print("dm_env_wrappers", dm_env_wrappers.__file__)
+print("basic_pitch_onnx", Path(basic_pitch_inference.ICASSP_2022_MODEL_PATH).with_suffix(".onnx"))
 
 if not torch.__version__.startswith("2.13.0"):
     raise SystemExit(f"Unexpected torch version: {torch.__version__}")
@@ -67,6 +73,9 @@ if not str(torch.version.cuda).startswith("12.6"):
     raise SystemExit(f"Unexpected torch CUDA runtime: {torch.version.cuda}")
 if "ala-pianist-venv" in str(torch.__file__):
     raise SystemExit(f"Torch was installed into the venv instead of inherited: {torch.__file__}")
+basic_pitch_model = Path(basic_pitch_inference.ICASSP_2022_MODEL_PATH).with_suffix(".onnx")
+if not basic_pitch_model.is_file():
+    raise SystemExit(f"Basic Pitch ONNX model is missing: {basic_pitch_model}")
 PY
 
 WORKDIR /app

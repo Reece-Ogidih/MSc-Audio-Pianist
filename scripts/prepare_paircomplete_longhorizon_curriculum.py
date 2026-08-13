@@ -22,6 +22,7 @@ from ala_pianist.music import (
     manifest_payload,
     missing_nonadjacent_pairs,
     ordered_pairs,
+    pair_only_training_distribution,
     pairwise_manifest_payload,
     training_distribution,
     validation_sequences,
@@ -95,8 +96,38 @@ def build_manifest_payloads() -> dict[str, dict[str, Any]]:
             },
         }
     )
+    pair_only_sequences, pair_only_weights = pair_only_training_distribution()
+    pair_only = manifest_payload(
+        "pair_only_complete_v1",
+        pair_only_sequences,
+        role="train_pair_only",
+    )
+    categories = {item.pitches: item.category for item in ordered_pairs(include_repeats=True)}
+    for item, weight in zip(pair_only["sequences"], pair_only_weights, strict=True):
+        pitches = tuple(item["pitches"])
+        item["sampling_weight"] = weight
+        item["source_bucket"] = "anchor" if len(pitches) == 1 else categories[pitches]
+    pair_only.update(
+        {
+            "source": "pair-only complete local primitive ablation",
+            "adaptation_steps": 500000,
+            "maximum_sequence_length": 2,
+            "repeated_note_semantics": "positive 0.12 s gap encodes release then repress",
+            "frozen_test_exclusion": {
+                "manifest": str(FROZEN_LONG_HORIZON),
+                "policy": "training units contain at most two events; frozen composition tuples are excluded",
+            },
+            "sampling_distribution": {
+                "anchor_mass": 0.10,
+                "ordered_pair_mass": 0.90,
+                "per_anchor_weight": 0.02,
+                "per_ordered_pair_weight": 0.036,
+            },
+        }
+    )
     return {
         "complete_pairwise_v1.json": pairwise_manifest_payload(),
+        "pair_only_complete_v1.json": pair_only,
         "long_horizon_curriculum_v1.json": curriculum,
         "long_horizon_validation_v1.json": manifest_payload("long_horizon_validation_v1", validation, role="validation"),
         "long_horizon_clean_test_v1.json": manifest_payload("long_horizon_clean_test_v1", clean_test, role="clean_test"),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,15 @@ from ala_pianist.evaluation.metrics import binary_key_vector
 ROOT = Path("/home/reece_dev/msc-audio-pianist")
 MANIFEST = ROOT / "configs" / "long_horizon_compositional_v1.json"
 PAIRWISE_MANIFEST = ROOT / "configs" / "complete_pairwise_v1.json"
+
+
+def _load_evaluator():
+    path = ROOT / "scripts" / "evaluate_long_horizon_compositional.py"
+    spec = importlib.util.spec_from_file_location("evaluate_long_horizon_compositional", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_long_horizon_manifest_has_expected_lengths_and_no_training_sequences() -> None:
@@ -135,3 +145,51 @@ def test_long_horizon_metrics_count_unintended_wrong_presses() -> None:
     assert metrics["unintended_press_count"] >= 1
     assert metrics["unintended_timesteps_above_press_threshold"] > 0
     assert metrics["pressed_key_precision"] < 1.0
+
+
+def test_explicit_audio_intervention_selection_is_exact() -> None:
+    evaluator = _load_evaluator()
+    sequences = ((72,), (74,), (72, 73))
+
+    modes = evaluator._audio_modes_by_sequence(
+        sequences,
+        include_audio_interventions=True,
+        intervention_sequences=((74,), (72, 73)),
+    )
+
+    assert modes[(72,)] == ("correct",)
+    assert modes[(74,)] == ("correct", "zero", "mismatched")
+    assert modes[(72, 73)] == ("correct", "zero", "mismatched")
+
+
+def test_unknown_audio_intervention_sequence_fails() -> None:
+    evaluator = _load_evaluator()
+
+    with pytest.raises(ValueError, match="absent from the benchmark"):
+        evaluator._audio_modes_by_sequence(
+            ((72,),),
+            include_audio_interventions=True,
+            intervention_sequences=((76,),),
+        )
+
+
+def test_sequence_spec_parser_is_deterministic_and_rejects_empty() -> None:
+    evaluator = _load_evaluator()
+
+    assert evaluator._parse_sequence_specs(["72", "73, 76"]) == ((72,), (73, 76))
+    with pytest.raises(ValueError, match="must not be empty"):
+        evaluator._parse_sequence_specs([","])
+
+
+def test_skipped_pipeline_checkpoint_is_not_required(tmp_path: Path) -> None:
+    evaluator = _load_evaluator()
+
+    audit = evaluator._audit_checkpoints(
+        [],
+        pipeline1_controller=tmp_path / "absent.pt",
+        pipeline2_checkpoints={},
+        include_pipeline1=False,
+    )
+
+    assert audit["pipeline2"] == {}
+    assert audit["pipeline1_symbolic_controller"]["exists"] is False

@@ -22,6 +22,7 @@ from ala_pianist.music.paircomplete_curriculum import (
     midi_tuple_hash,
     missing_nonadjacent_pairs,
     ordered_pairs,
+    pair_only_training_distribution,
     pairwise_manifest_payload,
     training_distribution,
     validation_sequences,

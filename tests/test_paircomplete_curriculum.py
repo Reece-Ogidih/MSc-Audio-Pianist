@@ -15,6 +15,7 @@ from ala_pianist.music import (
     midi_tuple_hash,
     missing_nonadjacent_pairs,
     ordered_pairs,
+    pair_only_training_distribution,
     training_distribution,
     validation_sequences,
 )
@@ -61,6 +62,70 @@ def test_missing_nonadjacent_pair_list_is_complete() -> None:
 def test_repeated_note_pairs_are_positive_gap_primitives() -> None:
     repeated = [pair for pair in ordered_pairs(include_repeats=True) if pair.category == "repeated_note"]
     assert [pair.pitches for pair in repeated] == [(72, 72), (73, 73), (74, 74), (75, 75), (76, 76)]
+
+
+def test_pair_only_distribution_contains_all_and_only_local_primitives() -> None:
+    sequences, weights = pair_only_training_distribution()
+
+    assert len(sequences) == 30
+    assert sequences[:5] == tuple((pitch,) for pitch in range(72, 77))
+    assert set(sequences[5:]) == {item.pitches for item in ordered_pairs(include_repeats=True)}
+    assert all(len(sequence) <= 2 for sequence in sequences)
+    assert sum(weights) == pytest.approx(1.0)
+    assert sum(weights[:5]) == pytest.approx(0.10)
+    assert sum(weights[5:]) == pytest.approx(0.90)
+    assert all(weight == pytest.approx(0.02) for weight in weights[:5])
+    assert all(weight == pytest.approx(0.036) for weight in weights[5:])
+    assert {(pitch, pitch) for pitch in range(72, 77)}.issubset(set(sequences))
+
+
+def test_pair_only_manifest_is_explicit_and_has_no_long_sequences() -> None:
+    payload = json.loads((ROOT / "configs" / "pair_only_complete_v1.json").read_text())
+
+    assert payload["name"] == "pair_only_complete_v1"
+    assert payload["maximum_sequence_length"] == 2
+    assert len(payload["sequences"]) == 30
+    assert all(len(item["pitches"]) <= 2 for item in payload["sequences"])
+    assert payload["sampling_distribution"] == {
+        "anchor_mass": 0.10,
+        "ordered_pair_mass": 0.90,
+        "per_anchor_weight": 0.02,
+        "per_ordered_pair_weight": 0.036,
+    }
+
+
+@pytest.mark.parametrize(
+    ("script_name", "source_fragment", "semantics", "output_fragment"),
+    [
+        (
+            "run_pipeline1_paironly_refinement.sh",
+            "checkpoint_800000_steps.pt",
+            "actor_weights_only_fresh_critics_optimizers_replay_buffer_rng_from_seed",
+            "/workspace/runs/general_one_hand/droq",
+        ),
+        (
+            "run_pipeline2_paironly_refinement.sh",
+            "full_checkpoint_1000000_steps.pt",
+            "network_optimizer_alpha_warm_start_fresh_replay_rng_from_seed",
+            "/workspace/experiments/pipeline2_direct_audio",
+        ),
+    ],
+)
+def test_pair_only_hex_wrappers_pin_sources_semantics_and_checkpoints(
+    script_name: str,
+    source_fragment: str,
+    semantics: str,
+    output_fragment: str,
+) -> None:
+    script = (ROOT / "scripts" / "hex" / script_name).read_text()
+
+    assert "configs/pair_only_complete_v1.json" in script
+    assert source_fragment in script
+    assert semantics in script
+    assert output_fragment in script
+    assert "100000,250000,500000" in script
+    assert "--full-checkpoint-steps 500000" in script
+    assert "Refusing to overwrite non-empty run directory" in script
 
 
 def test_training_distribution_is_balanced_and_excludes_frozen_splits() -> None:

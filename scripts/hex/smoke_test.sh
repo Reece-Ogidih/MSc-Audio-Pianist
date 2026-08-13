@@ -42,17 +42,37 @@ python - <<'PY'
 from pathlib import Path
 import os
 import torch
+import onnxruntime
+import basic_pitch
+from basic_pitch import inference as basic_pitch_inference
 print('torch', torch.__version__, 'cuda', torch.version.cuda)
+print('basic_pitch', getattr(basic_pitch, '__version__', '0.4.0'), basic_pitch.__file__)
+print('onnxruntime', onnxruntime.__version__)
+basic_pitch_model = Path(basic_pitch_inference.ICASSP_2022_MODEL_PATH).with_suffix('.onnx')
+print('basic_pitch_model', basic_pitch_model)
+if not basic_pitch_model.is_file():
+    raise SystemExit(f'Basic Pitch ONNX model missing: {basic_pitch_model}')
 if not torch.cuda.is_available():
     raise SystemExit('CUDA is not available inside the Hare container')
 x = torch.ones((8, 8), device='cuda')
 print('cuda_sum', float((x @ x).sum().detach().cpu()))
 import mujoco, dm_control, robopianist
 from ala_pianist.rl import GeneralOneHandGoalEnv
+from scripts import evaluate_long_horizon_compositional
+from ala_pianist.audio import BasicPitchTranscriber
+from ala_pianist.music.midi_utils import NoteEvent, write_monophonic_midi
+from ala_pianist.pipelines.indirect import render_midi_with_fluidsynth
 sf2 = Path(robopianist.SF2_PATH)
 print('soundfont', sf2, sf2.exists())
 if not sf2.exists():
     raise SystemExit(f'Soundfont not found: {sf2}')
+bp_dir = Path('/workspace/basic_pitch_smoke')
+bp_midi = write_monophonic_midi([NoteEvent(74, 0.0, 0.28, 90)], bp_dir / 'note.mid')
+bp_wav = render_midi_with_fluidsynth(bp_midi, bp_dir / 'note.wav', soundfont_path=sf2)
+bp_result = BasicPitchTranscriber().transcribe(bp_wav)
+print('basic_pitch_note_count', len(bp_result.notes))
+if not bp_result.notes:
+    raise SystemExit('Basic Pitch smoke produced no notes')
 env = GeneralOneHandGoalEnv(
     generated_midi_dir='/workspace/smoke_midi',
     curriculum='single_notes',

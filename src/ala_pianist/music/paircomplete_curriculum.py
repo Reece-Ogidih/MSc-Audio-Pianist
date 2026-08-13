@@ -203,6 +203,18 @@ def training_distribution() -> tuple[tuple[int, ...], tuple[float, ...]]:
     return tuple(sequences), tuple(weight / total for weight in weights)
 
 
+def pair_only_training_distribution() -> tuple[tuple[int, ...], tuple[float, ...]]:
+    """Return anchors plus every ordered pair with a 10/90 mass split."""
+
+    anchor_items = tuple(item.pitches for item in anchors())
+    pair_items = tuple(item.pitches for item in ordered_pairs(include_repeats=True))
+    sequences = anchor_items + pair_items
+    weights = tuple(0.10 / len(anchor_items) for _ in anchor_items) + tuple(
+        0.90 / len(pair_items) for _ in pair_items
+    )
+    return sequences, weights
+
+
 def manifest_payload(name: str, sequences: Iterable[Iterable[int]], *, role: str) -> dict[str, Any]:
     items = []
     for index, sequence in enumerate(sequences):

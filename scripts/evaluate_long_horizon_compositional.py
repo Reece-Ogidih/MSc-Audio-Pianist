@@ -67,6 +67,12 @@ def main() -> None:
     parser.add_argument("--allow-short-primitives", action="store_true")
     parser.add_argument("--max-sequences", type=int, default=None)
     parser.add_argument("--pipeline1-transcriber", choices=["basic_pitch", "generated_wav_peak"], default="basic_pitch")
+    parser.add_argument(
+        "--pipeline1-condition",
+        choices=["both", "oracle", "transcribed"],
+        default="both",
+        help="Select Pipeline 1 conditions without recomputing an already valid condition.",
+    )
     parser.add_argument("--pipeline1-controller", type=Path, default=DEFAULT_SYMBOLIC_CONTROLLER)
     parser.add_argument("--skip-pipeline1", action="store_true")
     parser.add_argument("--skip-pipeline2", action="store_true")
@@ -79,6 +85,19 @@ def main() -> None:
         help="Additional Pipeline 2 checkpoint path, usable with --pipeline2-model LABEL.",
     )
     parser.add_argument("--include-audio-interventions", action="store_true")
+    parser.add_argument(
+        "--audio-intervention-sequence",
+        action="append",
+        default=[],
+        metavar="MIDI[,MIDI...]",
+        help="Run zero/mismatched rollouts for this exact sequence; repeat as needed.",
+    )
+    parser.add_argument(
+        "--sequence-name",
+        action="append",
+        default=[],
+        help="Evaluate only this exact manifest sequence name; repeat as needed.",
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seed", type=int, default=20260808)
     parser.add_argument("--sample-rate", type=int, default=44100)
@@ -95,6 +114,13 @@ def main() -> None:
         allow_trained_short=args.allow_short_primitives,
     )
     sequences = list(benchmark.sequences)
+    if args.sequence_name:
+        requested_names = set(args.sequence_name)
+        available_names = {sequence.name for sequence in sequences}
+        unknown_names = requested_names - available_names
+        if unknown_names:
+            raise ValueError(f"Unknown benchmark sequence names: {sorted(unknown_names)}")
+        sequences = [sequence for sequence in sequences if sequence.name in requested_names]
     if args.smoke:
         sequences = [sequence for sequence in sequences if sequence.length in {3, 5}][:2]
         args.pipeline2_model = args.pipeline2_model or ["pipeline2_seed13_1m"]
@@ -105,11 +131,12 @@ def main() -> None:
         raise ValueError("No long-horizon sequences selected.")
 
     pipeline2_checkpoints = _pipeline2_checkpoint_specs(args.pipeline2_checkpoint_path)
-    checkpoint_labels = args.pipeline2_model or list(pipeline2_checkpoints)
+    checkpoint_labels = [] if args.skip_pipeline2 else (args.pipeline2_model or list(pipeline2_checkpoints))
     checkpoint_audit = _audit_checkpoints(
         checkpoint_labels,
         pipeline1_controller=args.pipeline1_controller,
         pipeline2_checkpoints=pipeline2_checkpoints,
+        include_pipeline1=not args.skip_pipeline1,
     )
     soundfont = find_default_soundfont()
     items = _render_benchmark_items(
@@ -134,6 +161,7 @@ def main() -> None:
             output_dir=output_dir / "pipeline1",
             controller_checkpoint=args.pipeline1_controller,
             transcriber_name=args.pipeline1_transcriber,
+            condition=args.pipeline1_condition,
             config=IndirectPipelineConfig(
                 midi_min=min(benchmark.midi_pitches),
                 midi_max=max(benchmark.midi_pitches),
@@ -152,6 +180,7 @@ def main() -> None:
         event_rows.extend(p1_event_rows)
 
     if not args.skip_pipeline2:
+        intervention_sequences = _parse_sequence_specs(args.audio_intervention_sequence)
         p2_sequence_rows, p2_audio_rows, p2_event_rows = _evaluate_pipeline2(
             sequences=selected_sequences,
             items=items,
@@ -162,6 +191,7 @@ def main() -> None:
             seed=args.seed,
             device=args.device,
             include_audio_interventions=args.include_audio_interventions,
+            intervention_sequences=intervention_sequences,
         )
         sequence_rows.extend(p2_sequence_rows)
         audio_dependence_rows.extend(p2_audio_rows)
@@ -234,6 +264,7 @@ def _audit_checkpoints(
     *,
     pipeline1_controller: Path,
     pipeline2_checkpoints: dict[str, Path],
+    include_pipeline1: bool = True,
 ) -> dict[str, Any]:
     labels = selected_labels
     audit = {
@@ -244,7 +275,7 @@ def _audit_checkpoints(
         },
         "pipeline2": {},
     }
-    if not pipeline1_controller.is_file():
+    if include_pipeline1 and not pipeline1_controller.is_file():
         raise FileNotFoundError(f"Pipeline 1 controller not found: {pipeline1_controller}")
     for label in labels:
         path = pipeline2_checkpoints[label]
@@ -305,6 +336,7 @@ def _evaluate_pipeline1(
     output_dir: Path,
     controller_checkpoint: Path,
     transcriber_name: str,
+    condition: str,
     config: IndirectPipelineConfig,
     horizon_steps: int,
     seed: int,
@@ -313,22 +345,29 @@ def _evaluate_pipeline1(
     offset_tolerance: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     policy = DroQPolicy.load(controller_checkpoint, device=device)
-    transcriber = _build_transcriber(transcriber_name)
+    if condition not in {"both", "oracle", "transcribed"}:
+        raise ValueError(f"Unsupported Pipeline 1 condition: {condition!r}")
+    transcriber = None if condition == "oracle" else _build_transcriber(transcriber_name)
     sequence_rows = []
     transcription_rows = []
     event_rows = []
     for item_index, item in enumerate(items):
         oracle_output = OracleMidiTranscriber(item.midi_path).transcribe(item.wav_path)
-        predicted_output = _safe_transcribe(transcriber, item.wav_path)
-        for condition, output in (("pipeline1_oracle", oracle_output), ("pipeline1_basic_pitch", predicted_output)):
+        outputs = []
+        if condition in {"both", "oracle"}:
+            outputs.append(("pipeline1_oracle", oracle_output))
+        if condition in {"both", "transcribed"}:
+            assert transcriber is not None
+            outputs.append(("pipeline1_basic_pitch", _safe_transcribe(transcriber, item.wav_path)))
+        for pipeline_condition, output in outputs:
             symbolic = _symbolic_result(
                 output,
                 item.notes,
                 config,
                 onset_tolerance=onset_tolerance,
-                offset_tolerance=None if condition == "pipeline1_oracle" else offset_tolerance,
+                offset_tolerance=None if pipeline_condition == "pipeline1_oracle" else offset_tolerance,
             )
-            if condition == "pipeline1_basic_pitch":
+            if pipeline_condition == "pipeline1_basic_pitch":
                 metric = symbolic.transcription_metrics
                 transcription_rows.append(
                     {
@@ -346,7 +385,7 @@ def _evaluate_pipeline1(
                 continue
             goal_midi = write_controller_midi_from_result(
                 symbolic,
-                output_dir / "controller_goals" / condition / f"{item.sequence_name}.mid",
+                output_dir / "controller_goals" / pipeline_condition / f"{item.sequence_name}.mid",
             )
             row, events = _rollout_symbolic_policy(
                 controller_midi_path=goal_midi,
@@ -356,7 +395,7 @@ def _evaluate_pipeline1(
                 horizon_steps=horizon_steps,
                 midi_min=config.midi_min,
                 midi_max=config.midi_max,
-                model_label="Pipeline1 Oracle" if condition == "pipeline1_oracle" else "Pipeline1 Basic Pitch",
+                model_label="Pipeline1 Oracle" if pipeline_condition == "pipeline1_oracle" else "Pipeline1 Basic Pitch",
                 sequence_name=item.sequence_name,
                 sequence=item.pitches,
                 archetype=_archetype_from_name(item.sequence_name),
@@ -377,6 +416,7 @@ def _evaluate_pipeline2(
     seed: int,
     device: str,
     include_audio_interventions: bool,
+    intervention_sequences: tuple[tuple[int, ...], ...],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     _bank, clips = build_direct_audio_reference_bank(
         generated_root=output_dir / "canonical_audio",
@@ -397,7 +437,11 @@ def _evaluate_pipeline2(
     sequence_to_clip = {tuple(clip.sequence): index for index, clip in enumerate(env.clips)}
     notes_by_sequence = {tuple(item.pitches): item.notes for item in items}
     name_by_sequence = {tuple(item.pitches): item.sequence_name for item in items}
-    modes_by_sequence = _audio_modes_by_sequence(sequences, include_audio_interventions=include_audio_interventions)
+    modes_by_sequence = _audio_modes_by_sequence(
+        sequences,
+        include_audio_interventions=include_audio_interventions,
+        intervention_sequences=intervention_sequences,
+    )
     sequence_rows = []
     audio_rows = []
     event_rows = []
@@ -727,14 +771,39 @@ def _empty_sequence_row(item: RenderedBenchmarkItem, model_label: str, outcome: 
     }
 
 
-def _audio_modes_by_sequence(sequences, *, include_audio_interventions: bool) -> dict[tuple[int, ...], tuple[str, ...]]:
+def _parse_sequence_specs(specs: Iterable[str]) -> tuple[tuple[int, ...], ...]:
+    parsed = []
+    for spec in specs:
+        try:
+            sequence = tuple(int(value.strip()) for value in spec.split(",") if value.strip())
+        except ValueError as exc:
+            raise ValueError(f"Invalid MIDI sequence specification: {spec!r}") from exc
+        if not sequence:
+            raise ValueError("Audio intervention sequences must not be empty.")
+        parsed.append(sequence)
+    return tuple(parsed)
+
+
+def _audio_modes_by_sequence(
+    sequences,
+    *,
+    include_audio_interventions: bool,
+    intervention_sequences: tuple[tuple[int, ...], ...] = (),
+) -> dict[tuple[int, ...], tuple[str, ...]]:
     if not include_audio_interventions:
         return {tuple(sequence): ("correct",) for sequence in sequences}
-    representative_by_length = {}
-    for sequence in sequences:
-        representative_by_length.setdefault(len(sequence), tuple(sequence))
+    available = {tuple(sequence) for sequence in sequences}
+    requested = set(intervention_sequences)
+    unknown = requested - available
+    if unknown:
+        raise ValueError(f"Audio intervention sequences are absent from the benchmark: {sorted(unknown)}")
+    if not requested:
+        representative_by_length = {}
+        for sequence in sequences:
+            representative_by_length.setdefault(len(sequence), tuple(sequence))
+        requested = set(representative_by_length.values())
     return {
-        tuple(sequence): ("correct", "zero", "mismatched") if tuple(sequence) in set(representative_by_length.values()) else ("correct",)
+        tuple(sequence): ("correct", "zero", "mismatched") if tuple(sequence) in requested else ("correct",)
         for sequence in sequences
     }
 

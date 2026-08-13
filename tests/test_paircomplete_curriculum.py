@@ -144,6 +144,18 @@ def test_atomic_pair_only_orchestrator_has_required_guards() -> None:
     assert "sleep 105" in script
 
 
+def test_hex_smoke_uses_standalone_python_without_nested_heredoc() -> None:
+    smoke = (ROOT / "scripts" / "hex" / "smoke_test.sh").read_text()
+    runtime_smoke = ROOT / "scripts" / "hex" / "hex_runtime_smoke.py"
+
+    assert runtime_smoke.is_file()
+    assert "python /app/scripts/hex/hex_runtime_smoke.py" in smoke
+    assert "bash -lc" not in smoke
+    assert "<<" not in smoke
+    assert "NUMBA_CACHE_DIR=/tmp/ala-numba-cache" in smoke
+    assert "XDG_CACHE_HOME=/tmp/ala-xdg-cache" in smoke
+
+
 def test_training_distribution_is_balanced_and_excludes_frozen_splits() -> None:
     sequences, weights = training_distribution()
     frozen = load_frozen_test_tuples(ROOT / "configs" / "long_horizon_compositional_v1.json")

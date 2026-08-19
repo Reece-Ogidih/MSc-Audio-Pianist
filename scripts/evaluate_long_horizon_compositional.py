@@ -375,8 +375,8 @@ def _evaluate_pipeline1(
                         "sequence_name": item.sequence_name,
                         "sequence": "-".join(str(pitch) for pitch in item.pitches),
                         "sequence_length": len(item.pitches),
-                        "transcriber_name": predicted_output.transcriber_name,
-                        "transcriber_error": predicted_output.metadata.get("error", ""),
+                        "transcriber_name": output.transcriber_name,
+                        "transcriber_error": output.metadata.get("error", ""),
                         **({} if metric is None else metric.as_dict()),
                     }
                 )

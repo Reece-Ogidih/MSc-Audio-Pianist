@@ -193,3 +193,64 @@ def test_skipped_pipeline_checkpoint_is_not_required(tmp_path: Path) -> None:
 
     assert audit["pipeline2"] == {}
     assert audit["pipeline1_symbolic_controller"]["exists"] is False
+
+
+def test_pipeline1_transcription_rows_use_actual_transcriber_output(monkeypatch, tmp_path: Path) -> None:
+    evaluator = _load_evaluator()
+
+    class DummyPolicy:
+        pass
+
+    class DummyTranscriber:
+        name = "dummy_transcriber"
+
+        def transcribe(self, wav_path):
+            return evaluator.TranscriptionOutput(
+                notes=(),
+                transcriber_name="dummy_transcriber",
+                source_audio_path=wav_path,
+                metadata={"error": "expected test error"},
+            )
+
+    class DummyOracle:
+        def __init__(self, midi_path):
+            self.midi_path = midi_path
+
+        def transcribe(self, wav_path):
+            return evaluator.TranscriptionOutput(
+                notes=(),
+                transcriber_name="oracle_midi",
+                source_audio_path=wav_path,
+                metadata={},
+            )
+
+    item = evaluator.RenderedBenchmarkItem(
+        sequence_name="anchor_000_72",
+        pitches=(72,),
+        midi_path=tmp_path / "input.mid",
+        wav_path=tmp_path / "input.wav",
+        notes=(),
+    )
+    monkeypatch.setattr(evaluator.DroQPolicy, "load", staticmethod(lambda *_args, **_kwargs: DummyPolicy()))
+    monkeypatch.setattr(evaluator, "_build_transcriber", lambda _name: DummyTranscriber())
+    monkeypatch.setattr(evaluator, "OracleMidiTranscriber", DummyOracle)
+
+    sequence_rows, transcription_rows, event_rows = evaluator._evaluate_pipeline1(
+        items=(item,),
+        output_dir=tmp_path / "out",
+        controller_checkpoint=tmp_path / "controller.pt",
+        transcriber_name="basic_pitch",
+        condition="transcribed",
+        config=evaluator.IndirectPipelineConfig(midi_min=72, midi_max=76),
+        horizon_steps=2,
+        seed=1,
+        device="cpu",
+        onset_tolerance=0.05,
+        offset_tolerance=0.10,
+    )
+
+    assert len(sequence_rows) == 1
+    assert sequence_rows[0]["strict_outcome"] == "no_predicted_goal"
+    assert transcription_rows[0]["transcriber_name"] == "dummy_transcriber"
+    assert transcription_rows[0]["transcriber_error"] == "expected test error"
+    assert event_rows == []

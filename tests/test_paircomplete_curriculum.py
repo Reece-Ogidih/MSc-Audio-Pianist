@@ -144,6 +144,34 @@ def test_atomic_pair_only_orchestrator_has_required_guards() -> None:
     assert "sleep 105" in script
 
 
+def test_final_synthetic_evaluation_orchestrator_has_required_guards() -> None:
+    script = (ROOT / "scripts/hex/launch_paironly_final_evaluation.sh").read_text()
+    worker = (ROOT / "scripts/hex/run_paironly_final_evaluation_group.sh").read_text()
+    status = (ROOT / "scripts/hex/status_paironly_final_evaluation.sh").read_text()
+
+    assert "Need three idle GPUs" in script
+    assert "require_hash p1_paironly" in script
+    assert "require_hash p2_paironly" in script
+    assert "report_hash p2_base_lightweight" in script
+    assert "pipeline2_direct_audio_droq_v1_seed13_1m_retry1/lightweight_checkpoints/checkpoint_1000000_steps.pt" in script
+    assert "scripts/hex/smoke_test.sh" in script
+    assert script.index("scripts/hex/smoke_test.sh") < script.index("launch_group p1_all")
+    assert "GROUP=p1_all" in script or "-e GROUP=\"${group}\"" in script
+    assert "require_empty_destination \"${RUN_DIR}\"" in script
+    assert "evaluation_launch_manifest.json" in script
+    assert "pipeline1_modes" in script and "basic_pitch" in script
+
+    assert "pipeline1-condition both" in worker
+    assert "p1_base" in worker and "p1_paironly" in worker and "p1_pairhorizon" in worker
+    assert "p2_base" in worker and "p2_paironly" in worker and "p2_pairhorizon" in worker
+    assert "--include-audio-interventions" in worker
+    assert "exact_13_retention" in worker
+    assert "complete_pairwise_v1.json" in worker
+    assert "long_horizon_clean_test_v1.json" in worker
+    assert "long_horizon_extrapolation_v1.json" in worker
+    assert "Basic Pitch is not available" in status
+
+
 def test_hex_smoke_uses_standalone_python_without_nested_heredoc() -> None:
     smoke = (ROOT / "scripts" / "hex" / "smoke_test.sh").read_text()
     runtime_smoke = ROOT / "scripts" / "hex" / "hex_runtime_smoke.py"

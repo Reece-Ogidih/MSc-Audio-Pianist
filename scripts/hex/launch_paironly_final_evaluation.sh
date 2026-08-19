@@ -186,7 +186,9 @@ common_env=(
   -e RUN_NAME="${RUN_NAME}"
 )
 launch_group() {
-  local group="$1" gpu="$2" name="paironly-final-${group}-${short}"
+  local group="$1"
+  local gpu="$2"
+  local name="paironly-final-${group}-${short}"
   hare run -d --name "${name}" --gpus "device=${gpu}" --user "$(id -u):$(id -g)" \
     "${common_env[@]}" -e GROUP="${group}" \
     -v "${REPO}:/app" -v "${SCRATCH}:/workspace" --workdir /app \

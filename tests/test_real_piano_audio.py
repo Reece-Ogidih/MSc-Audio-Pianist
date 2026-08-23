@@ -8,6 +8,7 @@ import soundfile as sf
 
 from ala_pianist.audio.real_piano import (
     construct_real_audio_benchmarks,
+    discover_raw_recordings,
     preprocess_recordings,
     validate_raw_recordings,
 )
@@ -30,16 +31,35 @@ def test_real_piano_validation_detects_required_takes(tmp_path: Path) -> None:
     assert any(row["status"] == "missing_takes" for row in rows)
 
 
+def test_note_name_recording_filenames_map_to_fixed_c5_e5_range(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    _write_note(raw / "C take 1.wav")
+    _write_note(raw / "C# take 2.wav")
+    _write_note(raw / "D# take 3.wav")
+    _write_note(raw / "D take 1.wav")
+    _write_note(raw / "E take 1.wav")
+
+    recordings = discover_raw_recordings(raw)
+    by_name_take = {(recording.note_name, recording.take): recording.pitch for recording in recordings}
+
+    assert by_name_take[("C", 1)] == 72
+    assert by_name_take[("C#", 2)] == 73
+    assert by_name_take[("D", 1)] == 74
+    assert by_name_take[("D#", 3)] == 75
+    assert by_name_take[("E", 1)] == 76
+    assert all(recording.filename_style == "note_name" for recording in recordings)
+
+
 def test_preprocess_and_construct_benchmark_clips(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
-    for pitch in range(72, 77):
-        for take in range(1, 6):
-            _write_note(raw / f"midi{pitch}_take{take:02d}.wav")
+    for note_name in ("C", "C#", "D", "D#", "E"):
+        for take in range(1, 4):
+            _write_note(raw / f"{note_name} take {take}.wav")
 
     rows, summary = validate_raw_recordings(raw)
     assert summary["ready"] is True
     processed_rows, processed_summary = preprocess_recordings(raw, tmp_path / "processed")
-    assert processed_summary["processed_count"] == 25
+    assert processed_summary["processed_count"] == 15
     assert all(row["processed_sample_rate"] == 16000 for row in processed_rows)
 
     manifest = tmp_path / "mini_manifest.json"

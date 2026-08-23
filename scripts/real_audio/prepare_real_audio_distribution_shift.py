@@ -27,12 +27,13 @@ def main() -> None:
     parser.add_argument("--raw-dir", type=Path, default=ROOT / "data/real_piano/raw")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "artifacts/real_audio_distribution_shift/prepared_v1")
     parser.add_argument("--realizations", type=int, default=3)
+    parser.add_argument("--takes-per-pitch", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260823)
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    validation_rows, validation_summary = validate_raw_recordings(args.raw_dir)
+    validation_rows, validation_summary = validate_raw_recordings(args.raw_dir, takes_per_pitch=args.takes_per_pitch)
     write_csv(args.output_dir / "recording_manifest.csv", validation_rows)
     write_json(args.output_dir / "recording_manifest_summary.json", validation_summary)
     if not validation_summary["ready"]:

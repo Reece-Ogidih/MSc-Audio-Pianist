@@ -13,6 +13,7 @@ python scripts/real_audio/prepare_real_audio_distribution_shift.py \
   --raw-dir "${RAW_DIR}" \
   --output-dir "${OUTPUT_DIR}" \
   --realizations "${REALIZATIONS:-3}" \
+  --takes-per-pitch "${TAKES_PER_PITCH:-3}" \
   --seed "${REAL_AUDIO_SEED:-20260823}"
 
 cat <<EOF

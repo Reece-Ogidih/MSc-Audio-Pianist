@@ -12,7 +12,7 @@ This folder is ignored by Git. Do not commit recordings.
 
 ## Required Notes
 
-Record five clean takes for each MIDI pitch:
+Record three clean takes for each MIDI pitch:
 
 - MIDI 72, C5
 - MIDI 73, C#5
@@ -20,13 +20,21 @@ Record five clean takes for each MIDI pitch:
 - MIDI 75, D#5
 - MIDI 76, E5
 
-Use filenames exactly like:
+MIDI-style filenames are accepted:
 
 ```text
 midi72_take01.wav
 midi72_take02.wav
 ...
-midi76_take05.wav
+midi76_take03.wav
+```
+
+The final recorded dataset may also use note-name filenames:
+
+```text
+C take 1.wav
+C# take 2.wav
+D# take 3.wav
 ```
 
 WAV is preferred. FLAC, M4A, and MP3 are accepted if `ffmpeg` can read them.

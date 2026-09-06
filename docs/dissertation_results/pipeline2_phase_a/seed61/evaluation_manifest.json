@@ -1,0 +1,97 @@
+{
+  "audio_split": "canonical_eval",
+  "checkpoint_paths": [
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_10000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_25000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_50000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_100000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_250000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_500000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_750000_steps.pt",
+    "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/lightweight_checkpoints/checkpoint_1000000_steps.pt"
+  ],
+  "clip_count": 13,
+  "determinism_policy": "deterministic actor inference; one rollout per sequence/audio mode because resets are deterministic for fixed clip and seed",
+  "device": "cuda",
+  "evaluation_audio_policy": "canonical_eval audio is rendered from the same FluidSynth/TimGM6mb benchmark generator; no separate held-out acoustic split exists in the current Phase-A training artifacts",
+  "git_commit": "04bbc005717bc9b715bdb94e3ca54ef9f1d108eb",
+  "hostname": "1f55f421ba9e",
+  "logical_sequences": [
+    [
+      72
+    ],
+    [
+      73
+    ],
+    [
+      74
+    ],
+    [
+      75
+    ],
+    [
+      76
+    ],
+    [
+      72,
+      73
+    ],
+    [
+      73,
+      72
+    ],
+    [
+      73,
+      74
+    ],
+    [
+      74,
+      73
+    ],
+    [
+      74,
+      75
+    ],
+    [
+      75,
+      74
+    ],
+    [
+      75,
+      76
+    ],
+    [
+      76,
+      75
+    ]
+  ],
+  "metrics_reused": [
+    "pressed_key_metrics",
+    "timestep_key_metrics",
+    "binary_key_vector"
+  ],
+  "mismatch_mapping": {
+    "anchor_72": "anchor_73",
+    "anchor_73": "anchor_74",
+    "anchor_74": "anchor_75",
+    "anchor_75": "anchor_76",
+    "anchor_76": "anchor_72",
+    "transition_72_73": "transition_73_72",
+    "transition_73_72": "transition_73_74",
+    "transition_73_74": "transition_74_73",
+    "transition_74_73": "transition_74_75",
+    "transition_74_75": "transition_75_74",
+    "transition_75_74": "transition_75_76",
+    "transition_75_76": "transition_76_75",
+    "transition_76_75": "transition_72_73"
+  },
+  "output_dir": "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m/evaluation",
+  "policy_observation_fields": [
+    "audio",
+    "physical"
+  ],
+  "run_dir": "/workspace/experiments/pipeline2_direct_audio/pipeline2_direct_audio_droq_v1_seed61_1m",
+  "sampling_policy": "deterministic per-sequence canonical clip for evaluation",
+  "seed": 2027,
+  "true_heldout_acoustic_set_exists": false
+}

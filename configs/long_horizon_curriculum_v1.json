@@ -1,0 +1,1761 @@
+{
+  "benchmark_name": "long_horizon_curriculum_v1",
+  "frozen_test_exclusion": {
+    "hash_policy": "exact integer MIDI tuple SHA-256",
+    "manifest": "/home/reece_dev/msc-audio-pianist/configs/long_horizon_compositional_v1.json"
+  },
+  "key_index_mapping": "key_index = midi_pitch - 21",
+  "midi_pitches": [
+    72,
+    73,
+    74,
+    75,
+    76
+  ],
+  "name": "long_horizon_curriculum_v1",
+  "note_duration": 0.28,
+  "note_gap": 0.12,
+  "role": "train",
+  "sampling_distribution": {
+    "anchor_mass": 0.1,
+    "composition_mass": 0.4,
+    "ordered_pair_mass": 0.5,
+    "schedule": "single static mixture for the first +500k run; no staged long-run launcher yet"
+  },
+  "seed": 20260808,
+  "sequence_timing_profile": "aligned",
+  "sequences": [
+    {
+      "archetype": "train",
+      "key_indices": [
+        51
+      ],
+      "length": 1,
+      "midi_tuple_hash": "8722616204217eddb39e7df969e0698aed8e599ba62ed2de1ce49b03ade0fede",
+      "name": "train_000_len1",
+      "pitches": [
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "anchor"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52
+      ],
+      "length": 1,
+      "midi_tuple_hash": "96061e92f58e4bdcdee73df36183fe3ac64747c81c26f6c83aada8d2aabb1864",
+      "name": "train_001_len1",
+      "pitches": [
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "anchor"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53
+      ],
+      "length": 1,
+      "midi_tuple_hash": "eb624dbe56eb6620ae62080c10a273cab73ae8eca98ab17b731446a31c79393a",
+      "name": "train_002_len1",
+      "pitches": [
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "anchor"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54
+      ],
+      "length": 1,
+      "midi_tuple_hash": "f369cb89fc627e668987007d121ed1eacdc01db9e28f8bb26f358b7d8c4f08ac",
+      "name": "train_003_len1",
+      "pitches": [
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "anchor"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55
+      ],
+      "length": 1,
+      "midi_tuple_hash": "f74efabef12ea619e30b79bddef89cffa9dda494761681ca862cff2871a85980",
+      "name": "train_004_len1",
+      "pitches": [
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "anchor"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        51,
+        51
+      ],
+      "length": 2,
+      "midi_tuple_hash": "f350854cba775f75a23b34b198e27d2d4a5421c1ee38593f9b3d9f75c67de72d",
+      "name": "train_005_len2",
+      "pitches": [
+        72,
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "repeated_note"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        51,
+        52
+      ],
+      "length": 2,
+      "midi_tuple_hash": "36265af5d5dbf7c32db4cd2c4acfd0a48914843754b6e40b1025f60abca74990",
+      "name": "train_006_len2",
+      "pitches": [
+        72,
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        51,
+        53
+      ],
+      "length": 2,
+      "midi_tuple_hash": "d9f2491c35cb1d5c3a41ad826fc8f4f419492cb21a4a57682bb685d0c8d38f2d",
+      "name": "train_007_len2",
+      "pitches": [
+        72,
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        51,
+        54
+      ],
+      "length": 2,
+      "midi_tuple_hash": "678db5d2524f08330cfac3759ae6e20c28a1c66d5b8a59c6250fec54edb96f17",
+      "name": "train_008_len2",
+      "pitches": [
+        72,
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        51,
+        55
+      ],
+      "length": 2,
+      "midi_tuple_hash": "a4ffe708d74f812fd67af4a129a4aa0e408b03be3113f20bcd671125b9a75d46",
+      "name": "train_009_len2",
+      "pitches": [
+        72,
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52,
+        51
+      ],
+      "length": 2,
+      "midi_tuple_hash": "591169fb6815c8367b30f2004a8b5243898c1633161490b73a3d439f60df386b",
+      "name": "train_010_len2",
+      "pitches": [
+        73,
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52,
+        52
+      ],
+      "length": 2,
+      "midi_tuple_hash": "0a8b0341fca14a06a9ec0212f4845ce599816b18e22fa24a8136987c487d9f43",
+      "name": "train_011_len2",
+      "pitches": [
+        73,
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "repeated_note"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52,
+        53
+      ],
+      "length": 2,
+      "midi_tuple_hash": "9d41137b5fc824bc7f069f7aa392b1d90e54003b8c0381d8cccc6b3ddd1be6a6",
+      "name": "train_012_len2",
+      "pitches": [
+        73,
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52,
+        54
+      ],
+      "length": 2,
+      "midi_tuple_hash": "51009fe9bdfd142cafe4d9783689726858e32606796b14220aa2e7c818aa2b7a",
+      "name": "train_013_len2",
+      "pitches": [
+        73,
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        52,
+        55
+      ],
+      "length": 2,
+      "midi_tuple_hash": "53ea4618c8378bf9c9f591781f9a0f1dde92e54a7fc0068bd531c1d3edd840fa",
+      "name": "train_014_len2",
+      "pitches": [
+        73,
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53,
+        51
+      ],
+      "length": 2,
+      "midi_tuple_hash": "d4c025ff643901df49b78e3cb06ada0f565a5a96069e52460995f5e5aefec4b8",
+      "name": "train_015_len2",
+      "pitches": [
+        74,
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53,
+        52
+      ],
+      "length": 2,
+      "midi_tuple_hash": "f93047edbe13ff450ff88b9cd2be60a5ba20cb548934dfd20f3b5560c53870d3",
+      "name": "train_016_len2",
+      "pitches": [
+        74,
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53,
+        53
+      ],
+      "length": 2,
+      "midi_tuple_hash": "7871786347ac0667b1a7b79e2b55147d526945b6ff9068122a45756dc3340024",
+      "name": "train_017_len2",
+      "pitches": [
+        74,
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "repeated_note"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53,
+        54
+      ],
+      "length": 2,
+      "midi_tuple_hash": "21bdcb5cb39c4c4b27bf195359e78858007fb5bd3d8c0ac7ed3044e66af6ffde",
+      "name": "train_018_len2",
+      "pitches": [
+        74,
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        53,
+        55
+      ],
+      "length": 2,
+      "midi_tuple_hash": "9dce703cfa9bddcd9d366eddf10ade96665f0da8822cf5f8e9c4ec25d8e2b8db",
+      "name": "train_019_len2",
+      "pitches": [
+        74,
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54,
+        51
+      ],
+      "length": 2,
+      "midi_tuple_hash": "5d3d5641159f661310028704086defda4ceeb569a874560fcc20d9f9aed665a4",
+      "name": "train_020_len2",
+      "pitches": [
+        75,
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54,
+        52
+      ],
+      "length": 2,
+      "midi_tuple_hash": "196956ea26ce711957ec99922929638b0d26f3cd78fd8faf2928c16ecc61ee08",
+      "name": "train_021_len2",
+      "pitches": [
+        75,
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54,
+        53
+      ],
+      "length": 2,
+      "midi_tuple_hash": "f125a5bb3efc2778dd6253ae5ce1fe30e9c82d14f8b3d6c828c6f87ba0a6835f",
+      "name": "train_022_len2",
+      "pitches": [
+        75,
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54,
+        54
+      ],
+      "length": 2,
+      "midi_tuple_hash": "f37330290fe97040021035c838212747deb983d1ba5ffda00cff6cdd6d2a71c1",
+      "name": "train_023_len2",
+      "pitches": [
+        75,
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "repeated_note"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        54,
+        55
+      ],
+      "length": 2,
+      "midi_tuple_hash": "89c26d89586875f3eb0b73f12cd1e8e6d5d59dd09f5c7a1b34a960ce0dff162c",
+      "name": "train_024_len2",
+      "pitches": [
+        75,
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55,
+        51
+      ],
+      "length": 2,
+      "midi_tuple_hash": "53b8b589563017886cbcb69e89cb9b0acb0d14d25e2b3a2a47b082d850f8171f",
+      "name": "train_025_len2",
+      "pitches": [
+        76,
+        72
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55,
+        52
+      ],
+      "length": 2,
+      "midi_tuple_hash": "fc47f89956b59d828bab7b42f1c3d5ff37d6604a921a7d5af1c04368265b8936",
+      "name": "train_026_len2",
+      "pitches": [
+        76,
+        73
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55,
+        53
+      ],
+      "length": 2,
+      "midi_tuple_hash": "94d8f66a915aa8c22b3c70acdeca42ef3ea83519c88edcba13d5b0d9740ebbbe",
+      "name": "train_027_len2",
+      "pitches": [
+        76,
+        74
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "newly_added_nonadjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55,
+        54
+      ],
+      "length": 2,
+      "midi_tuple_hash": "1da43f3a3a9d2cee2c5f550a88d15cefa1c05040e4c0c4cddf1b5211ffaa9b41",
+      "name": "train_028_len2",
+      "pitches": [
+        76,
+        75
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "originally_seen_adjacent"
+    },
+    {
+      "archetype": "train",
+      "key_indices": [
+        55,
+        55
+      ],
+      "length": 2,
+      "midi_tuple_hash": "8408a0c9c288a51d6c3caba3a860594970efc5ef4b8f02066b422416a3f876ac",
+      "name": "train_029_len2",
+      "pitches": [
+        76,
+        76
+      ],
+      "sampling_weight": 0.020000000000000025,
+      "source_bucket": "repeated_note"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        51,
+        53,
+        51
+      ],
+      "length": 3,
+      "midi_tuple_hash": "7feaa69534205ab96d354257a37704bb8e7338c87360cd4ebb045f5d9f04a7d2",
+      "name": "train_030_len3",
+      "pitches": [
+        72,
+        74,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        55,
+        53,
+        55
+      ],
+      "length": 3,
+      "midi_tuple_hash": "f02610694eaff15e98bfe054c729394a3dee566bf70b1a292cc97d4159dd58f6",
+      "name": "train_031_len3",
+      "pitches": [
+        76,
+        74,
+        76
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        52,
+        55,
+        51,
+        54
+      ],
+      "length": 4,
+      "midi_tuple_hash": "2929a4f37f057442eee200638df94eaf649de01df8b327d352949a3bc8976e09",
+      "name": "train_032_len4",
+      "pitches": [
+        73,
+        76,
+        72,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        54,
+        51,
+        55,
+        52
+      ],
+      "length": 4,
+      "midi_tuple_hash": "c36814f61f740b3c32ee1f72a33c7ac3ca8a3369f61c91c3cce5403d61e9a9ad",
+      "name": "train_033_len4",
+      "pitches": [
+        75,
+        72,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        51,
+        53,
+        55,
+        52,
+        54
+      ],
+      "length": 5,
+      "midi_tuple_hash": "f609bb9800bf86d42d998766ece5f6480517c523b961eb14f68338bda161e06d",
+      "name": "train_034_len5",
+      "pitches": [
+        72,
+        74,
+        76,
+        73,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_short",
+      "key_indices": [
+        55,
+        52,
+        51,
+        54,
+        53
+      ],
+      "length": 5,
+      "midi_tuple_hash": "36a9c6a70cf4a9d4a841f79ff2f9f11cf32ff979a23bb0b4331406e897765dda",
+      "name": "train_035_len5",
+      "pitches": [
+        76,
+        73,
+        72,
+        75,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "short_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        51,
+        54,
+        52,
+        55,
+        53,
+        51
+      ],
+      "length": 6,
+      "midi_tuple_hash": "c360b740767ebb582cfe438b5dfd2ada5fa5e9c3440bdff2444229601cd6e23e",
+      "name": "train_036_len6",
+      "pitches": [
+        72,
+        75,
+        73,
+        76,
+        74,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        55,
+        51,
+        54,
+        52,
+        53,
+        55
+      ],
+      "length": 6,
+      "midi_tuple_hash": "a02838718addf3a4444321428cd21ee2e0a75ad427cf6e941b3d08dde8d540cf",
+      "name": "train_037_len6",
+      "pitches": [
+        76,
+        72,
+        75,
+        73,
+        74,
+        76
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        51,
+        55,
+        53,
+        52,
+        54,
+        51,
+        53
+      ],
+      "length": 7,
+      "midi_tuple_hash": "8ae179aa2f516acc7d10150d36c47b8c298986479e76f1cdde7a56927a39b3a6",
+      "name": "train_038_len7",
+      "pitches": [
+        72,
+        76,
+        74,
+        73,
+        75,
+        72,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        54,
+        51,
+        53,
+        55,
+        52,
+        54,
+        51
+      ],
+      "length": 7,
+      "midi_tuple_hash": "e8ffd8f3ecc53e93d2532eb32f9801a70f55cf445c09b9df4993e168fbbfd3a2",
+      "name": "train_039_len7",
+      "pitches": [
+        75,
+        72,
+        74,
+        76,
+        73,
+        75,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        51,
+        53,
+        52,
+        55,
+        54,
+        51,
+        55,
+        52
+      ],
+      "length": 8,
+      "midi_tuple_hash": "848d2a446d0a14269832f014b5edf8760a7aca04714344bf0e75fa81be8bd2ee",
+      "name": "train_040_len8",
+      "pitches": [
+        72,
+        74,
+        73,
+        76,
+        75,
+        72,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        55,
+        53,
+        51,
+        54,
+        52,
+        55,
+        51,
+        53
+      ],
+      "length": 8,
+      "midi_tuple_hash": "d3f15e2a40ab35e2db6041ba858352cb4af5991ea47ce0cbd59314094809acde",
+      "name": "train_041_len8",
+      "pitches": [
+        76,
+        74,
+        72,
+        75,
+        73,
+        76,
+        72,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        51,
+        54,
+        55,
+        52,
+        53,
+        51,
+        52,
+        55,
+        54
+      ],
+      "length": 9,
+      "midi_tuple_hash": "c050e51efc76c2fc93f77779cd4de33b100f1275c0275feb681148b3264dcea9",
+      "name": "train_042_len9",
+      "pitches": [
+        72,
+        75,
+        76,
+        73,
+        74,
+        72,
+        73,
+        76,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        55,
+        52,
+        54,
+        51,
+        53,
+        55,
+        54,
+        52,
+        51
+      ],
+      "length": 9,
+      "midi_tuple_hash": "e0e84794069fbb4a9ca6126a620a8a37a9f12fb05625b3ad518f2e086a28c5e3",
+      "name": "train_043_len9",
+      "pitches": [
+        76,
+        73,
+        75,
+        72,
+        74,
+        76,
+        75,
+        73,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        51,
+        55,
+        52,
+        53,
+        54,
+        51,
+        53,
+        55,
+        52,
+        54
+      ],
+      "length": 10,
+      "midi_tuple_hash": "262a3387f1c18aebef94ceef5474155bdff3754be69e768f94d13c4347db941f",
+      "name": "train_044_len10",
+      "pitches": [
+        72,
+        76,
+        73,
+        74,
+        75,
+        72,
+        74,
+        76,
+        73,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_medium",
+      "key_indices": [
+        55,
+        51,
+        54,
+        53,
+        52,
+        55,
+        53,
+        51,
+        54,
+        52
+      ],
+      "length": 10,
+      "midi_tuple_hash": "8e32a8a3b973a4016770f474192461acacf9284f1d3cd6dc0244e0b9eab63927",
+      "name": "train_045_len10",
+      "pitches": [
+        76,
+        72,
+        75,
+        74,
+        73,
+        76,
+        74,
+        72,
+        75,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "medium_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        53,
+        55,
+        54,
+        52,
+        51,
+        54,
+        55,
+        53,
+        52,
+        51
+      ],
+      "length": 11,
+      "midi_tuple_hash": "b1378eea89153fd38b96fbd6a97377ead546e27e8043180dcc2ce3405b04db62",
+      "name": "train_046_len11",
+      "pitches": [
+        72,
+        74,
+        76,
+        75,
+        73,
+        72,
+        75,
+        76,
+        74,
+        73,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        53,
+        51,
+        52,
+        54,
+        55,
+        52,
+        51,
+        53,
+        54,
+        55
+      ],
+      "length": 11,
+      "midi_tuple_hash": "1401fdb5e53a6199df24c52355d11aed513c9f42adaeacc9c831996ce8fbb8a9",
+      "name": "train_047_len11",
+      "pitches": [
+        76,
+        74,
+        72,
+        73,
+        75,
+        76,
+        73,
+        72,
+        74,
+        75,
+        76
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        54,
+        52,
+        55,
+        53,
+        51,
+        55,
+        54,
+        52,
+        53,
+        51,
+        54
+      ],
+      "length": 12,
+      "midi_tuple_hash": "1f2c5581c3b033de9d00f9c5af5a6a6c689d8019aee2a60f839824e48e6649f0",
+      "name": "train_048_len12",
+      "pitches": [
+        72,
+        75,
+        73,
+        76,
+        74,
+        72,
+        76,
+        75,
+        73,
+        74,
+        72,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        52,
+        54,
+        51,
+        53,
+        55,
+        51,
+        52,
+        54,
+        53,
+        55,
+        52
+      ],
+      "length": 12,
+      "midi_tuple_hash": "c2ac6015347c00935bca40d9b176b9cc022ec0bacec303164f3b7ceaba5e2ed3",
+      "name": "train_049_len12",
+      "pitches": [
+        76,
+        73,
+        75,
+        72,
+        74,
+        76,
+        72,
+        73,
+        75,
+        74,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        55,
+        53,
+        52,
+        54,
+        51,
+        53,
+        55,
+        54,
+        52,
+        51,
+        54,
+        53
+      ],
+      "length": 13,
+      "midi_tuple_hash": "89d7322c69509e923098a18f06ef9c8cd14a8a942165657c87d571e0be2f9bca",
+      "name": "train_050_len13",
+      "pitches": [
+        72,
+        76,
+        74,
+        73,
+        75,
+        72,
+        74,
+        76,
+        75,
+        73,
+        72,
+        75,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        51,
+        52,
+        54,
+        53,
+        55,
+        52,
+        51,
+        54,
+        53,
+        52,
+        55,
+        51
+      ],
+      "length": 13,
+      "midi_tuple_hash": "f144cef28cbcee812755576b0b45c30972664382f423ca9ce46d8df77df40575",
+      "name": "train_051_len13",
+      "pitches": [
+        76,
+        72,
+        73,
+        75,
+        74,
+        76,
+        73,
+        72,
+        75,
+        74,
+        73,
+        76,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        53,
+        54,
+        52,
+        55,
+        51,
+        54,
+        53,
+        52,
+        55,
+        51,
+        53,
+        54,
+        52
+      ],
+      "length": 14,
+      "midi_tuple_hash": "0c696c8d5d94d84cfe7b08f5d3cd8f22dab449fb6faf860d8ff78e5d1fe7c72c",
+      "name": "train_052_len14",
+      "pitches": [
+        72,
+        74,
+        75,
+        73,
+        76,
+        72,
+        75,
+        74,
+        73,
+        76,
+        72,
+        74,
+        75,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        54,
+        52,
+        51,
+        53,
+        55,
+        52,
+        54,
+        51,
+        53,
+        55,
+        54,
+        52,
+        51
+      ],
+      "length": 14,
+      "midi_tuple_hash": "930e0dedca60f1f6132b79b4833bbb065bf3bc9a3ceae662a945886d1405a1bb",
+      "name": "train_053_len14",
+      "pitches": [
+        76,
+        75,
+        73,
+        72,
+        74,
+        76,
+        73,
+        75,
+        72,
+        74,
+        76,
+        75,
+        73,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        54,
+        53,
+        55,
+        52,
+        51,
+        53,
+        54,
+        55,
+        51,
+        52,
+        54,
+        53,
+        55,
+        52
+      ],
+      "length": 15,
+      "midi_tuple_hash": "d47a51bd4cf9b0efacefb5f9c0a4141ff57ed1cebfbdb23e9b5fbf06b4e54e0d",
+      "name": "train_054_len15",
+      "pitches": [
+        72,
+        75,
+        74,
+        76,
+        73,
+        72,
+        74,
+        75,
+        76,
+        72,
+        73,
+        75,
+        74,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        53,
+        52,
+        54,
+        51,
+        55,
+        54,
+        53,
+        51,
+        52,
+        55,
+        53,
+        54,
+        51,
+        52
+      ],
+      "length": 15,
+      "midi_tuple_hash": "dcb14a9c717ce1103e7ced7c8d9be1183bb49559046849801421d4653966f72f",
+      "name": "train_055_len15",
+      "pitches": [
+        76,
+        74,
+        73,
+        75,
+        72,
+        76,
+        75,
+        74,
+        72,
+        73,
+        76,
+        74,
+        75,
+        72,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        55,
+        54,
+        52,
+        53,
+        51,
+        54,
+        55,
+        52,
+        53,
+        51,
+        55,
+        54,
+        53,
+        52,
+        51
+      ],
+      "length": 16,
+      "midi_tuple_hash": "b7dbf10bb9d8d4cf1945bff868050da235217aeae53c2c2a7749972bba0a0585",
+      "name": "train_056_len16",
+      "pitches": [
+        72,
+        76,
+        75,
+        73,
+        74,
+        72,
+        75,
+        76,
+        73,
+        74,
+        72,
+        76,
+        75,
+        74,
+        73,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        51,
+        53,
+        54,
+        52,
+        55,
+        53,
+        51,
+        54,
+        52,
+        55,
+        51,
+        53,
+        52,
+        54,
+        55
+      ],
+      "length": 16,
+      "midi_tuple_hash": "a52c378b3931a15d9b5e960443d4212f6896d0b9d7b8244ba6e2b7f09a0b63fd",
+      "name": "train_057_len16",
+      "pitches": [
+        76,
+        72,
+        74,
+        75,
+        73,
+        76,
+        74,
+        72,
+        75,
+        73,
+        76,
+        72,
+        74,
+        73,
+        75,
+        76
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        53,
+        55,
+        52,
+        54,
+        51,
+        55,
+        53,
+        52,
+        54,
+        51,
+        53,
+        55,
+        54,
+        52,
+        51,
+        55
+      ],
+      "length": 17,
+      "midi_tuple_hash": "432889ca0b1aea637bdf4f61856b32ce2eba3f87a0bb77210661a9b5acc8e466",
+      "name": "train_058_len17",
+      "pitches": [
+        72,
+        74,
+        76,
+        73,
+        75,
+        72,
+        76,
+        74,
+        73,
+        75,
+        72,
+        74,
+        76,
+        75,
+        73,
+        72,
+        76
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        52,
+        51,
+        54,
+        53,
+        55,
+        51,
+        52,
+        54,
+        53,
+        55,
+        52,
+        51,
+        53,
+        54,
+        55,
+        52
+      ],
+      "length": 17,
+      "midi_tuple_hash": "154beab31651f5b03718489b81ab48794f341c1dffbac04e02e43b5e2b42cbb5",
+      "name": "train_059_len17",
+      "pitches": [
+        76,
+        73,
+        72,
+        75,
+        74,
+        76,
+        72,
+        73,
+        75,
+        74,
+        76,
+        73,
+        72,
+        74,
+        75,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        54,
+        52,
+        53,
+        55,
+        51,
+        53,
+        54,
+        52,
+        55,
+        51,
+        54,
+        53,
+        52,
+        55,
+        51,
+        53,
+        54
+      ],
+      "length": 18,
+      "midi_tuple_hash": "c6a00d4f9ebce31e453d27944266e5ade42aee02acdc2b7b1664bc439d1602c4",
+      "name": "train_060_len18",
+      "pitches": [
+        72,
+        75,
+        73,
+        74,
+        76,
+        72,
+        74,
+        75,
+        73,
+        76,
+        72,
+        75,
+        74,
+        73,
+        76,
+        72,
+        74,
+        75
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        53,
+        54,
+        51,
+        52,
+        55,
+        54,
+        53,
+        51,
+        52,
+        55,
+        53,
+        54,
+        52,
+        51,
+        55,
+        54,
+        53
+      ],
+      "length": 18,
+      "midi_tuple_hash": "fc863a6cf1925821943fcd477bceae9904de3dd27be7e65d0818d56f1c70281e",
+      "name": "train_061_len18",
+      "pitches": [
+        76,
+        74,
+        75,
+        72,
+        73,
+        76,
+        75,
+        74,
+        72,
+        73,
+        76,
+        74,
+        75,
+        73,
+        72,
+        76,
+        75,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        55,
+        53,
+        54,
+        52,
+        51,
+        54,
+        53,
+        55,
+        52,
+        51,
+        55,
+        54,
+        53,
+        52,
+        51,
+        54,
+        55,
+        53
+      ],
+      "length": 19,
+      "midi_tuple_hash": "2c5f7da50fed6246a9b9ffcd608254e1ee668bbd4b1224ab88d7c57c269d5419",
+      "name": "train_062_len19",
+      "pitches": [
+        72,
+        76,
+        74,
+        75,
+        73,
+        72,
+        75,
+        74,
+        76,
+        73,
+        72,
+        76,
+        75,
+        74,
+        73,
+        72,
+        75,
+        76,
+        74
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        51,
+        54,
+        52,
+        53,
+        55,
+        52,
+        54,
+        51,
+        53,
+        55,
+        51,
+        52,
+        54,
+        53,
+        55,
+        54,
+        52,
+        51
+      ],
+      "length": 19,
+      "midi_tuple_hash": "23fc900b57d3121430416f9c2a442dd6a639241075c91198e78d41a8b0a4c1c5",
+      "name": "train_063_len19",
+      "pitches": [
+        76,
+        72,
+        75,
+        73,
+        74,
+        76,
+        73,
+        75,
+        72,
+        74,
+        76,
+        72,
+        73,
+        75,
+        74,
+        76,
+        75,
+        73,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        51,
+        53,
+        55,
+        54,
+        52,
+        51,
+        55,
+        53,
+        54,
+        52,
+        51,
+        54,
+        53,
+        55,
+        52,
+        51,
+        53,
+        54,
+        55,
+        52
+      ],
+      "length": 20,
+      "midi_tuple_hash": "4b70173a6470815462fb51263f31c2cb1f0875ef4847a73de4a904f472ed53b7",
+      "name": "train_064_len20",
+      "pitches": [
+        72,
+        74,
+        76,
+        75,
+        73,
+        72,
+        76,
+        74,
+        75,
+        73,
+        72,
+        75,
+        74,
+        76,
+        73,
+        72,
+        74,
+        75,
+        76,
+        73
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    },
+    {
+      "archetype": "train_long",
+      "key_indices": [
+        55,
+        52,
+        54,
+        53,
+        51,
+        55,
+        53,
+        52,
+        54,
+        51,
+        55,
+        54,
+        52,
+        53,
+        51,
+        55,
+        52,
+        54,
+        53,
+        51
+      ],
+      "length": 20,
+      "midi_tuple_hash": "a96cfef8e963e86a647f70959c1a71c7ae0b6b43cb1a94534617d4e725f5095c",
+      "name": "train_065_len20",
+      "pitches": [
+        76,
+        73,
+        75,
+        74,
+        72,
+        76,
+        74,
+        73,
+        75,
+        72,
+        76,
+        75,
+        73,
+        74,
+        72,
+        76,
+        73,
+        75,
+        74,
+        72
+      ],
+      "sampling_weight": 0.011111111111111125,
+      "source_bucket": "long_composition"
+    }
+  ],
+  "source": "pair-complete curriculum refinement",
+  "velocity": 90
+}

@@ -1,0 +1,252 @@
+{
+  "benchmark_name": "long_horizon_validation_v1",
+  "key_index_mapping": "key_index = midi_pitch - 21",
+  "midi_pitches": [
+    72,
+    73,
+    74,
+    75,
+    76
+  ],
+  "name": "long_horizon_validation_v1",
+  "note_duration": 0.28,
+  "note_gap": 0.12,
+  "role": "validation",
+  "seed": 20260808,
+  "sequence_timing_profile": "aligned",
+  "sequences": [
+    {
+      "archetype": "validation_short",
+      "key_indices": [
+        51,
+        54,
+        53
+      ],
+      "length": 3,
+      "midi_tuple_hash": "2665c92dea1bc5f7d48fbb56dfd5d348b77fdb4afcb91cbc397ef755e006498f",
+      "name": "validation_000_len3",
+      "pitches": [
+        72,
+        75,
+        74
+      ]
+    },
+    {
+      "archetype": "validation_short",
+      "key_indices": [
+        55,
+        52,
+        53
+      ],
+      "length": 3,
+      "midi_tuple_hash": "551c2716029c94bf025e946b5bb3a3a4411b75623b88c132739b9d013f77aa5e",
+      "name": "validation_001_len3",
+      "pitches": [
+        76,
+        73,
+        74
+      ]
+    },
+    {
+      "archetype": "validation_short",
+      "key_indices": [
+        51,
+        53,
+        54,
+        52,
+        55
+      ],
+      "length": 5,
+      "midi_tuple_hash": "acc1af54e797feefaaf170a86ea31aa8177e7aacef14a60ebd31403f916470f9",
+      "name": "validation_002_len5",
+      "pitches": [
+        72,
+        74,
+        75,
+        73,
+        76
+      ]
+    },
+    {
+      "archetype": "validation_short",
+      "key_indices": [
+        55,
+        53,
+        52,
+        54,
+        51
+      ],
+      "length": 5,
+      "midi_tuple_hash": "2fa0baac69e81ae52126c481b4a98ed9dc7a4224ecd0f94dacbb00688fbc2cb1",
+      "name": "validation_003_len5",
+      "pitches": [
+        76,
+        74,
+        73,
+        75,
+        72
+      ]
+    },
+    {
+      "archetype": "validation_medium",
+      "key_indices": [
+        51,
+        54,
+        55,
+        53,
+        52,
+        51,
+        53,
+        54,
+        52,
+        55
+      ],
+      "length": 10,
+      "midi_tuple_hash": "ca310a2d8bdafef42bfa2ef147e1a6cb4e2cf53e2b506150c88867b270c006e0",
+      "name": "validation_004_len10",
+      "pitches": [
+        72,
+        75,
+        76,
+        74,
+        73,
+        72,
+        74,
+        75,
+        73,
+        76
+      ]
+    },
+    {
+      "archetype": "validation_medium",
+      "key_indices": [
+        55,
+        52,
+        51,
+        53,
+        54,
+        55,
+        53,
+        52,
+        54,
+        51
+      ],
+      "length": 10,
+      "midi_tuple_hash": "b47f8359b3c6260cf11e91779e583119a9f877ed8ec51b1c1c6fa5872c2385e3",
+      "name": "validation_005_len10",
+      "pitches": [
+        76,
+        73,
+        72,
+        74,
+        75,
+        76,
+        74,
+        73,
+        75,
+        72
+      ]
+    },
+    {
+      "archetype": "validation_long",
+      "key_indices": [
+        51,
+        53,
+        54,
+        55,
+        52,
+        51,
+        54,
+        53,
+        55,
+        52,
+        51,
+        53,
+        55,
+        54,
+        52,
+        51,
+        54,
+        53,
+        52,
+        55
+      ],
+      "length": 20,
+      "midi_tuple_hash": "4a6bcd10ab2ac014ed701e91eca1a24ae5cc9cc3792fe7913a022b40f87eaf6b",
+      "name": "validation_006_len20",
+      "pitches": [
+        72,
+        74,
+        75,
+        76,
+        73,
+        72,
+        75,
+        74,
+        76,
+        73,
+        72,
+        74,
+        76,
+        75,
+        73,
+        72,
+        75,
+        74,
+        73,
+        76
+      ]
+    },
+    {
+      "archetype": "validation_long",
+      "key_indices": [
+        55,
+        54,
+        52,
+        53,
+        51,
+        55,
+        52,
+        54,
+        53,
+        51,
+        55,
+        53,
+        54,
+        52,
+        51,
+        55,
+        54,
+        53,
+        52,
+        51
+      ],
+      "length": 20,
+      "midi_tuple_hash": "636e6bd8ed870133c51ed3800a410eae506e0571f925aafe04e34fde2afaec2e",
+      "name": "validation_007_len20",
+      "pitches": [
+        76,
+        75,
+        73,
+        74,
+        72,
+        76,
+        73,
+        75,
+        74,
+        72,
+        76,
+        74,
+        75,
+        73,
+        72,
+        76,
+        75,
+        74,
+        73,
+        72
+      ]
+    }
+  ],
+  "velocity": 90
+}

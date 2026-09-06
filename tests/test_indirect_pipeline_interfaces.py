@@ -20,6 +20,7 @@ from ala_pianist.pipelines.indirect import (
     BENCHMARK_SEQUENCE_PITCHES,
     benchmark_sequence_events,
     create_rendered_benchmark,
+    find_default_soundfont,
     note_events_to_timed_notes,
     run_symbolic_frontend,
     write_benchmark_sequence_midi,
@@ -212,6 +213,64 @@ def test_manifest_generation_uses_no_sustain_and_mocked_renderer(tmp_path: Path,
     assert '"sustain": "none"' in manifest
     assert '"midi_min": 72' in manifest
     assert '"midi_max": 76' in manifest
+
+
+def test_explicit_soundfont_env_path_wins(tmp_path: Path, monkeypatch) -> None:
+    explicit = tmp_path / "explicit.sf2"
+    fallback = tmp_path / "fallback.sf2"
+    explicit.write_bytes(b"explicit")
+    fallback.write_bytes(b"fallback")
+
+    monkeypatch.setenv("SOUNDFONT", str(explicit))
+    monkeypatch.setattr("ala_pianist.pipelines.indirect._default_soundfont_candidates", lambda: [fallback])
+
+    assert find_default_soundfont() == explicit
+
+
+def test_invalid_explicit_soundfont_env_fails_clearly(tmp_path: Path, monkeypatch) -> None:
+    missing = tmp_path / "missing.sf2"
+    fallback = tmp_path / "fallback.sf2"
+    fallback.write_bytes(b"fallback")
+
+    monkeypatch.setenv("SOUNDFONT", str(missing))
+    monkeypatch.setattr("ala_pianist.pipelines.indirect._default_soundfont_candidates", lambda: [fallback])
+
+    with pytest.raises(FileNotFoundError, match="SOUNDFONT is set"):
+        find_default_soundfont()
+
+
+def test_soundfont_fallback_discovery_still_works_when_env_unset(tmp_path: Path, monkeypatch) -> None:
+    fallback = tmp_path / "fallback.sf2"
+    fallback.write_bytes(b"fallback")
+
+    monkeypatch.delenv("SOUNDFONT", raising=False)
+    monkeypatch.delenv("ALA_PIANIST_SOUNDFONT", raising=False)
+    monkeypatch.setattr("ala_pianist.pipelines.indirect._default_soundfont_candidates", lambda: [fallback])
+
+    assert find_default_soundfont() == fallback
+
+
+def test_rendered_benchmark_uses_soundfont_env_without_breaking_pipeline1_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    explicit = tmp_path / "explicit.sf2"
+    explicit.write_bytes(b"explicit")
+    used_soundfonts = []
+
+    def fake_render(midi_path, wav_path, *, soundfont_path, sample_rate, gain):
+        used_soundfonts.append(Path(soundfont_path))
+        path = Path(wav_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fake wav")
+        return path
+
+    monkeypatch.setenv("SOUNDFONT", str(explicit))
+    monkeypatch.setattr("ala_pianist.pipelines.indirect.render_midi_with_fluidsynth", fake_render)
+
+    items = create_rendered_benchmark(tmp_path, sample_rate=16000)
+
+    assert len(items) == 13
+    assert set(used_soundfonts) == {explicit}
 
 
 def test_timing_quantization_is_explicit() -> None:

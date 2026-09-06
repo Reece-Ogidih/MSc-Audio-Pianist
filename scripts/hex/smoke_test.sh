@@ -31,48 +31,15 @@ echo "This script is intended to run on Hex through Hare."
 hare run --rm --gpus "device=${GPU_INDEX}" \
   --user "$(id -u):$(id -g)" \
   -e "SMOKE_MARKER=${SMOKE_MARKER}" \
+  -e "PYTHONPATH=/app/src:/app/third_party/robopianist" \
+  -e "MUJOCO_GL=egl" \
+  -e "NUMBA_CACHE_DIR=/tmp/ala-numba-cache" \
+  -e "XDG_CACHE_HOME=/tmp/ala-xdg-cache" \
   -v "${REPO_ROOT}:/app" \
   -v "${SCRATCH}:/workspace" \
   --workdir /app \
   "${IMAGE_TAG}" \
-  bash -lc "set -euo pipefail
-export PYTHONPATH=/app/src:/app/third_party/robopianist
-export MUJOCO_GL=\${MUJOCO_GL:-egl}
-python - <<'PY'
-from pathlib import Path
-import os
-import torch
-print('torch', torch.__version__, 'cuda', torch.version.cuda)
-if not torch.cuda.is_available():
-    raise SystemExit('CUDA is not available inside the Hare container')
-x = torch.ones((8, 8), device='cuda')
-print('cuda_sum', float((x @ x).sum().detach().cpu()))
-import mujoco, dm_control, robopianist
-from ala_pianist.rl import GeneralOneHandGoalEnv
-sf2 = Path(robopianist.SF2_PATH)
-print('soundfont', sf2, sf2.exists())
-if not sf2.exists():
-    raise SystemExit(f'Soundfont not found: {sf2}')
-env = GeneralOneHandGoalEnv(
-    generated_midi_dir='/workspace/smoke_midi',
-    curriculum='single_notes',
-    midi_pitches=(73,),
-    lookahead=1,
-    horizon_steps=3,
-    action_mode='direct',
-    action_repeat=1,
-)
-obs, info = env.reset(seed=1)
-for _ in range(3):
-    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
-    if terminated or truncated:
-        break
-marker = Path('/workspace') / os.environ['SMOKE_MARKER']
-marker.write_text('hex smoke ok\n', encoding='utf-8')
-print('wrote', marker)
-PY
-test -f /workspace/${SMOKE_MARKER}
-"
+  python /app/scripts/hex/hex_runtime_smoke.py
 
 test -f "${SCRATCH}/${SMOKE_MARKER}"
 echo "smoke_marker=${SCRATCH}/${SMOKE_MARKER}"

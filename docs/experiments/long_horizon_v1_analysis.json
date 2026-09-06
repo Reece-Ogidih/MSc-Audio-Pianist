@@ -1,0 +1,119 @@
+{
+  "complete_distinct_pair_count": 20,
+  "complete_pair_count_including_repeats": 25,
+  "correlation": {
+    "Pipeline1 Basic Pitch": {
+      "corr_sequence_length_vs_timestep_f1": -0.89145379789473,
+      "corr_transition_novelty_vs_timestep_f1": 0.05950788238207564,
+      "note": "Negative values mean the factor is associated with lower timestep F1; correlations are descriptive only."
+    },
+    "Pipeline1 Oracle": {
+      "corr_sequence_length_vs_timestep_f1": -0.9044738365074191,
+      "corr_transition_novelty_vs_timestep_f1": 0.02398235420211227,
+      "note": "Negative values mean the factor is associated with lower timestep F1; correlations are descriptive only."
+    },
+    "Pipeline2 seed13 1.25M": {
+      "corr_sequence_length_vs_timestep_f1": -0.3915903204068105,
+      "corr_transition_novelty_vs_timestep_f1": 0.3910930547977958,
+      "note": "Negative values mean the factor is associated with lower timestep F1; correlations are descriptive only."
+    },
+    "Pipeline2 seed13 1M": {
+      "corr_sequence_length_vs_timestep_f1": -0.5712449132775792,
+      "corr_transition_novelty_vs_timestep_f1": -0.1561935432721936,
+      "note": "Negative values mean the factor is associated with lower timestep F1; correlations are descriptive only."
+    },
+    "Pipeline2 seed61 1M": {
+      "corr_sequence_length_vs_timestep_f1": -0.6318768579779358,
+      "corr_transition_novelty_vs_timestep_f1": -0.10790074022227829,
+      "note": "Negative values mean the factor is associated with lower timestep F1; correlations are descriptive only."
+    }
+  },
+  "missing_original_nonadjacent_directed_transitions": [
+    [
+      72,
+      74
+    ],
+    [
+      72,
+      75
+    ],
+    [
+      72,
+      76
+    ],
+    [
+      73,
+      75
+    ],
+    [
+      73,
+      76
+    ],
+    [
+      74,
+      72
+    ],
+    [
+      74,
+      76
+    ],
+    [
+      75,
+      72
+    ],
+    [
+      75,
+      73
+    ],
+    [
+      76,
+      72
+    ],
+    [
+      76,
+      73
+    ],
+    [
+      76,
+      74
+    ]
+  ],
+  "original_trained_pair_count": 8,
+  "pipeline1_oracle_sanity_check": {
+    "evidence": [
+      {
+        "basic_pitch_episode_duration": 2.8000000000000003,
+        "basic_pitch_event_hit_rate": 0.6666666666666666,
+        "basic_pitch_onset_timing_mae": 0.10000000000000003,
+        "oracle_episode_duration": 1.1,
+        "oracle_event_hit_rate": 0.3333333333333333,
+        "oracle_onset_timing_mae": 0.0,
+        "sequence_name": "len3_adjacent_scalar_up"
+      },
+      {
+        "basic_pitch_episode_duration": 3.5500000000000003,
+        "basic_pitch_event_hit_rate": 0.4,
+        "basic_pitch_onset_timing_mae": 0.10000000000000003,
+        "oracle_episode_duration": 1.9000000000000001,
+        "oracle_event_hit_rate": 0.2,
+        "oracle_onset_timing_mae": 0.0,
+        "sequence_name": "len5_adjacent_span"
+      },
+      {
+        "basic_pitch_episode_duration": 5.65,
+        "basic_pitch_event_hit_rate": 0.3,
+        "basic_pitch_onset_timing_mae": 0.08333333333333336,
+        "oracle_episode_duration": 3.9000000000000004,
+        "oracle_event_hit_rate": 0.1,
+        "oracle_onset_timing_mae": 0.05,
+        "sequence_name": "len10_seeded_balanced"
+      }
+    ],
+    "interpretation": "The oracle and Basic Pitch paths both reset cleanly and produce controller MIDI. Basic Pitch timing/prediction distortions can shift or lengthen controller targets, which can accidentally improve event-hit metrics for this frozen controller. No truncation or manifest alignment bug was found in this targeted table-level check.",
+    "verdict": "ORACLE_RESULT_VALID"
+  },
+  "repeated_note_pair_validity_note": "The MIDI writer and RoboPianist task accept same-pitch notes with a positive inter-note gap; they encode release-and-repress primitives rather than invalid duplicates.",
+  "repeated_note_pairs_valid": true,
+  "row_count": 124,
+  "source_results_dir": "/home/reece_dev/msc-audio-pianist/experiments/long_horizon_compositional_v1"
+}
